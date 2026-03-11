@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "pebble": {
+      "command": "node",
+      "args": ["C:/Users/MaxFi/Projects/pebble/dist/mcp-server.js"],
+      "env": {
+        "PEBBLE_PROJECT_PATH": "C:/Users/MaxFi/Projects/pebble"
+      }
+    }
+  }
+}
