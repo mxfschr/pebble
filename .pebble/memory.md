@@ -28,5 +28,4 @@
 - **61ae584**: v0.2.2: Context-window efficiency — ~345 tokens saved per session
 - **ba25e2d**: test: sync verification token added to memory.md
 - **8a28563**: v0.3.0: Auto-sync — pebble watch enable
-
-<!-- auto-sync test marker -->
+- **d37009c**: pebble: auto-sync — test: auto-sync E2E verification
