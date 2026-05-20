@@ -31,7 +31,7 @@ import {
   PEBBLE_CONFIG,
 } from "./types.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.3.0";
 
 const SOUL_TEMPLATE = `# soul.md
 # Define how Claude Code should feel when working with you.
@@ -370,6 +370,62 @@ program
     new Command("uninstall").description("Remove post-commit hook").action(() => {
       const result = uninstallGitHook(process.cwd());
       console.log(result.success ? chalk.green(`\n  ✓ ${result.message}\n`) : chalk.red(`\n  ✗ ${result.message}\n`));
+    })
+  );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pebble watch — auto-sync via git
+// ─────────────────────────────────────────────────────────────────────────────
+
+function setAutoSync(projectPath: string, enabled: boolean): void {
+  const configPath = path.join(projectPath, PEBBLE_DIR, PEBBLE_CONFIG);
+  let cfg: PebbleConfig;
+  if (fs.existsSync(configPath)) {
+    cfg = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(configPath, "utf-8")) };
+  } else {
+    // Create .pebble/ if missing — same as init does
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    cfg = { ...DEFAULT_CONFIG };
+  }
+  cfg.auto_sync = enabled;
+  fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), "utf-8");
+}
+
+program
+  .command("watch")
+  .description("Enable/disable git auto-sync (commit + push on remember, pull on session start)")
+  .addCommand(
+    new Command("enable").description("Turn on auto-sync for this project").action(() => {
+      const cwd = process.cwd();
+      const gitDir = path.join(cwd, ".git");
+      if (!fs.existsSync(gitDir)) {
+        console.log(chalk.red("\n  ✗ Not a git repository. Auto-sync needs git.\n"));
+        return;
+      }
+      setAutoSync(cwd, true);
+      console.log(chalk.green("\n  ✓ Auto-sync enabled for this project"));
+      console.log(chalk.gray("    Pebble will now auto-commit + push after every pebble_remember,"));
+      console.log(chalk.gray("    and auto-pull --rebase at the start of each MCP session."));
+      console.log(chalk.gray("    Operations are best-effort and silent — failures don't break sessions.\n"));
+    })
+  )
+  .addCommand(
+    new Command("disable").description("Turn off auto-sync for this project").action(() => {
+      setAutoSync(process.cwd(), false);
+      console.log(chalk.yellow("\n  ✓ Auto-sync disabled. You're back to manual git push/pull.\n"));
+    })
+  )
+  .addCommand(
+    new Command("status").description("Show whether auto-sync is on").action(() => {
+      const configPath = path.join(process.cwd(), PEBBLE_DIR, PEBBLE_CONFIG);
+      if (!fs.existsSync(configPath)) {
+        console.log(chalk.gray("\n  No .pebble/config.json — auto-sync off (default).\n"));
+        return;
+      }
+      const cfg: PebbleConfig = { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(configPath, "utf-8")) };
+      console.log(cfg.auto_sync
+        ? chalk.green("\n  ✓ Auto-sync is ON for this project.\n")
+        : chalk.gray("\n  Auto-sync is OFF for this project.\n"));
     })
   );
 

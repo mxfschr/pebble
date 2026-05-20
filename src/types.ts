@@ -45,6 +45,8 @@ export interface PebbleConfig {
   auto_extract: boolean;
   max_claude_md_lines: number;
   relevance_decay_days: number;
+  auto_sync: boolean;        // if true: auto-commit + push after every remember/forget,
+                             // and auto-pull at start of each MCP session
   categories: Record<MemoryCategory, { emoji: string; label: string }>;
 }
 
@@ -53,6 +55,7 @@ export const DEFAULT_CONFIG: PebbleConfig = {
   auto_extract: true,
   max_claude_md_lines: 150,
   relevance_decay_days: 30,
+  auto_sync: false,          // opt-in — many projects don't have a git remote
   categories: {
     decision: { emoji: "⚡", label: "Decisions" },
     pattern:  { emoji: "🔧", label: "Patterns & Conventions" },

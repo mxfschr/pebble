@@ -167,7 +167,34 @@ pebble status             # Show memory stats
 pebble generate           # Regenerate memory.md + context-tree
 pebble hooks install      # Install git hook (done by `init`)
 pebble hooks uninstall    # Remove git hook
+pebble watch enable       # Auto-sync: commit + push on remember, pull on session start
+pebble watch disable      # Back to manual git workflow
+pebble watch status       # Check if auto-sync is on for this project
 ```
+
+## Cross-machine workflow
+
+Pebble's accumulated knowledge is markdown inside your repo, so any machine with the repo cloned has the knowledge. Two workflows:
+
+**Manual (default):**
+```
+desktop:  pebble_remember → git add .pebble/ && git commit && git push
+laptop:   git pull → memory ready, Claude reads .pebble/memory.md on session start
+```
+
+**Auto-sync (opt-in, requires git remote):**
+```bash
+cd your-project
+pebble watch enable
+```
+
+After enabling, Pebble silently `git add .pebble/ && git commit && git push` after every `pebble_remember`, and `git pull --rebase` at the start of each MCP session per project. Failures are best-effort and never break Claude's response — if the network drops or auth fails, the local commit still stands and the push retries on the next memory event.
+
+What auto-sync does NOT do:
+- Sync the SQLite DB (it's per-machine; only the markdown files are versioned)
+- Handle messy merge conflicts (it aborts the rebase and leaves you to resolve manually)
+- Work in projects without a git remote (silently no-ops)
+- Push at high frequency if you have a rapid-fire commit hook (rate limit yourself in that case)
 
 ## Files Pebble touches
 

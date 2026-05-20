@@ -28,6 +28,7 @@ import {
   markAllProcessed,
 } from "./extractor.js";
 import { installGitHook } from "./hooks.js";
+import { tryAutoSync, tryAutoPull, shouldPullOnceThisSession } from "./sync.js";
 import {
   type MemoryCategory,
   type Project,
@@ -121,6 +122,13 @@ function getProjectContext(projectPath?: string): ProjectContext {
 
   const ctx: ProjectContext = { db, project, config, projectPath: normalized };
   projectCache.set(normalized, ctx);
+
+  // Auto-pull at start of session if enabled and this is the first time
+  // we're seeing this project in this MCP-server lifetime. Non-blocking.
+  if (config.auto_sync && shouldPullOnceThisSession(normalized)) {
+    void tryAutoPull(normalized);
+  }
+
   return ctx;
 }
 
@@ -181,6 +189,10 @@ Also call this after reviewing unprocessed commits in CLAUDE.md.`,
 
     const memoryMd = generateMemoryMd(ctx.db, ctx.project.id, ctx.config, ctx.projectPath);
     writeMemoryMd(ctx.projectPath, memoryMd);
+
+    if (ctx.config.auto_sync) {
+      void tryAutoSync(ctx.projectPath, `+${category}: ${content.slice(0, 60)}`);
+    }
 
     return {
       content: [{
@@ -284,6 +296,10 @@ server.registerTool(
     const memoryMd = generateMemoryMd(ctx.db, ctx.project.id, ctx.config, ctx.projectPath);
     writeMemoryMd(ctx.projectPath, memoryMd);
 
+    if (ctx.config.auto_sync) {
+      void tryAutoSync(ctx.projectPath, `forget id:${memory_id}`);
+    }
+
     return {
       content: [{
         type: "text",
@@ -371,6 +387,10 @@ server.registerTool(
 
     const memoryMd = generateMemoryMd(ctx.db, ctx.project.id, ctx.config, ctx.projectPath);
     writeMemoryMd(ctx.projectPath, memoryMd);
+
+    if (ctx.config.auto_sync) {
+      void tryAutoSync(ctx.projectPath, commit_id ? `mark commit #${commit_id} processed` : "mark all commits processed");
+    }
 
     return {
       content: [{
