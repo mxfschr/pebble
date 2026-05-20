@@ -17,16 +17,11 @@ const HEADER = `# Pebble Memory
 # Use \`pebble add\` or MCP tools to manage memories.
 # ───────────────────────────────────────────────────────────────`;
 
+// Minimal pointer — the MANDATORY rules live in global ~/.claude/CLAUDE.md
+// (injected by ensureGlobalClaudeMdPebble) to avoid duplicating ~150 tokens
+// of instructions in every project's memory.md.
 const PEBBLE_INSTRUCTIONS = `
-## 🪨 Pebble Memory — MANDATORY
-
-You MUST use Pebble MCP tools to persist knowledge across sessions. This is a core rule, not a suggestion.
-**IMPORTANT**: Always pass \`project_path\` (your current working directory) with every \`pebble_*\` tool call.
-
-**Session start**: Process any unprocessed commits below — call \`pebble_remember\` for insights, then \`pebble_mark_processed\`.
-**During work**: Call \`pebble_remember\` IMMEDIATELY when you make decisions, find bugs, discover patterns, or learn something non-obvious.
-**Before session ends**: Persist every important decision and learning. If you don't, the next session starts from zero.
-**Need context?**: Call \`pebble_recall\` before making assumptions.`;
+> Pebble active. MCP tools: pebble_remember, pebble_recall, pebble_status, pebble_mark_processed, pebble_forget. Usage rules in ~/.claude/CLAUDE.md.`;
 
 export function generateMemoryMd(
   db: Database.Database,
@@ -136,18 +131,14 @@ function formatSection(
   memories: Memory[],
   config: PebbleConfig
 ): string {
+  // Compact: header + bullets, no surrounding blank lines.
+  // sections.join("\n") in the caller still gives newline separation,
+  // and Markdown renders this fine. Saves ~2 lines × 5 sections per regen.
   const cat = config.categories[category];
-  const lines: string[] = [];
-
-  lines.push(`## ${cat.emoji} ${cat.label}`);
-  lines.push("");
-
+  const lines: string[] = [`## ${cat.emoji} ${cat.label}`];
   for (const mem of memories) {
-    const relevanceHint = mem.relevance >= 0.8 ? "" : mem.relevance >= 0.5 ? " ⤵" : " ⤵⤵";
-    lines.push(`- ${mem.content}${relevanceHint}`);
+    lines.push(`- ${mem.content}`);
   }
-
-  lines.push("");
   return lines.join("\n");
 }
 
@@ -238,25 +229,12 @@ export function ensureClaudeMdPointer(projectPath: string): void {
 const GLOBAL_PEBBLE_BLOCK = `
 ### Pebble Memory — MANDATORY
 
-Every project with a \`.pebble/\` directory uses Pebble for persistent memory. This is not optional.
+Projects with a \`.pebble/\` directory use Pebble MCP tools. Always pass \`project_path\` (current working directory) to every \`pebble_*\` call.
 
-**CRITICAL**: Every \`pebble_*\` tool call MUST include \`project_path\` set to your current working directory. The MCP server needs this to find the right project's database.
-
-**RULES — follow these like "No Placeholders" and "No Laziness":**
-
-1. **Session start**: Read \`.pebble/memory.md\`. If there are unprocessed commits, review them, call \`pebble_remember\` for anything worth keeping, then call \`pebble_mark_processed\`.
-2. **During work**: When you make a decision, discover a pattern, hit a bug, or learn something non-obvious — call \`pebble_remember\` immediately. Do not wait. Do not batch. One insight = one call.
-3. **Before session ends**: Call \`pebble_remember\` for every important decision or learning from this session. Conversations and reasoning that never become code are the MOST valuable things to persist.
-4. **When you need context**: Call \`pebble_recall\` to search past memories before making assumptions.
-
-**What to remember** (use the right category):
-- \`decision\`: WHY you chose an approach, not just what you did
-- \`pattern\`: Code conventions, naming rules, file structure patterns
-- \`context\`: Domain knowledge, key entities, how things connect
-- \`learning\`: Bugs found, pitfalls, non-obvious behavior, debugging insights
-- \`todo\`: Active work items, next steps, blockers
-
-**Failure mode**: If you finish a session where you made architectural decisions, fixed bugs, or learned something — and you did NOT call \`pebble_remember\` — you failed. The next session starts from zero. That is unacceptable.
+- **Session start**: Read \`.pebble/memory.md\`. Process unprocessed commits via \`pebble_remember\` then \`pebble_mark_processed\`.
+- **During work**: Call \`pebble_remember\` immediately for decisions, patterns, learnings, bugs, or todos. Don't batch. Categories: decision, pattern, context, learning, todo.
+- **Before session ends**: Persist every important insight — conversations that never become code are the most valuable.
+- **Need context**: Call \`pebble_recall\` before assuming.
 `;
 
 /**
@@ -279,19 +257,29 @@ export function ensureGlobalClaudeMdPebble(homeDir?: string): void {
   if (fs.existsSync(claudeMdPath)) {
     const content = fs.readFileSync(claudeMdPath, "utf-8");
     if (content.includes("Pebble Memory — MANDATORY")) {
-      // Already injected — check if it needs updating (e.g. project_path was added)
-      if (content.includes("project_path")) return; // Up to date
-      // Replace old block with new one
-      const startMarker = "### Pebble Memory — MANDATORY";
-      const startIdx = content.indexOf(startMarker);
+      // Block exists — keep it in sync with the current code-source-of-truth.
+      // Accept both `## ` and `### ` heading levels (early Pebble versions
+      // used ##; current GLOBAL_PEBBLE_BLOCK uses ###).
+      const startIdx = Math.max(
+        content.indexOf("## Pebble Memory — MANDATORY"),
+        content.indexOf("### Pebble Memory — MANDATORY")
+      );
       if (startIdx >= 0) {
-        // Find end of block — next ### heading or end of file
-        const afterStart = content.indexOf("\n###", startIdx + startMarker.length);
-        const blockEnd = afterStart >= 0 ? afterStart : content.length;
+        // Find end of block — next heading of same or lower depth, or end of file
+        const afterStart = content.search(/\n(##?#?) [^\n]/g);
+        // More robust: scan forward for next heading after our block
+        const blockStartLineEnd = content.indexOf("\n", startIdx);
+        const remaining = content.slice(blockStartLineEnd + 1);
+        const nextHeadingMatch = remaining.match(/\n(#{2,3}) [^\n]/);
+        const blockEnd = nextHeadingMatch
+          ? blockStartLineEnd + 1 + (nextHeadingMatch.index ?? 0)
+          : content.length;
         const before = content.slice(0, startIdx).trimEnd();
         const after = content.slice(blockEnd);
-        const updated = before + "\n" + GLOBAL_PEBBLE_BLOCK + after;
-        fs.writeFileSync(claudeMdPath, updated, "utf-8");
+        const updated = before + "\n\n" + GLOBAL_PEBBLE_BLOCK.trim() + "\n" + after;
+        if (updated !== content) {
+          fs.writeFileSync(claudeMdPath, updated, "utf-8");
+        }
       }
       return;
     }
