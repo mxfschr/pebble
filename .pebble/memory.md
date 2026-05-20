@@ -16,127 +16,31 @@ You MUST use Pebble MCP tools to persist knowledge across sessions. This is a co
 
 ## 📋 Project Context
 
-- Pebble is a persistent memory system for AI coding assistants
+- Pebble is a persistent memory system for AI coding assistants ⤵⤵
+
+## ⚡ Decisions
+
+- soul.md DEMOTED from Pebble's positioning headline. Reason: subjective, no evidence users want it, no competitor benchmark, doubles file count without clear win. Keep as feature in product (Max uses his own), but never headline it. Means README and Plugin Marketplace listing don't lead with "3-file system" — they lead with git-native + repo + context-tree.
+- Primary alternative Pebble displaces is Anthropic's native Auto Memory (v2.1.59+, 200-line cap, machine-local), NOT claude-mem (the 77k-star dominant third-party). Pebble's wedge vs claude-mem is different shape (zero LLM cost, git-native, no security surface) — NOT trying to out-feature them. "vs claude-mem" page should be honest, not strawman.
+- Pebble positioning locked 2026-05-20: "Open-source, git-native memory for Claude Code." Big-Fish-Small-Pond frame-bend out of commodity "persistent memory" category. Three themes ranked: T1 (memory costs nothing), T2 (decisions traceable to commits), T3 (knowledge ships in repo). Best-fit segment: solo/2-person devs running Claude Code across multiple machines. See positioning/09-positioning-canvas.md.
+- MCP server registration: global via `claude mcp add -s user pebble node /path/to/dist/mcp-server.js`, NOT per-project .mcp.json. Why: v0.2.0 made the server multi-project capable (project_path param + getProjectContext cache), so one global registration handles every project. Per-project .mcp.json files would re-introduce hardcoded machine-specific paths and couldn't be cleanly committed.
+- Memory sync between machines = git-versioned context-tree, DB stays per-machine. Why: SQLite binary files don't merge cleanly and WAL files make it worse. context-tree was designed for this (per README: "These files can be git-tracked and shared with your team"). Trade-off: relevance/decay/IDs rebuild on the new machine, but the knowledge itself transfers losslessly via markdown files.
+
+## 🔧 Patterns & Conventions
+
+- .gitignore strategy for Pebble installations: ignore `.pebble/memory.db*`, `.pebble/config.json`, `.pebble/run.sh`, `.mcp.json`. Track `.pebble/memory.md` and `.pebble/context-tree/`. The auto-init code in mcp-server.ts:getProjectContext appends only memory.db + config.json to .gitignore — leaves the trackable knowledge files alone.
 
 ## 💡 Learnings
 
-- Pebble dogfooding started 2026-03-11. Auto-init works but Claude Code doesn't automatically use pebble tools — Max had to remind the agent. Likely cause: .pebble/memory.md isn't auto-loaded like CLAUDE.md, and the CLAUDE.md pointer instruction isn't strong enough. Running 1-week test to gather real usage data.
+- Market reality (May 2026): claude-mem dominates (77k stars, Marketplace, npx-install). Anthropic ships Auto Memory + API Memory Tool + Managed Agents + Claude Dreaming. AGENTS.md in 60k+ projects. Cursor REMOVED Memories (anti-validation). HN skeptics: "CLAUDE.md gives 90%". Pain is real but power-user-only, not mass-market. Pebble's addressable: multi-machine power-users, not all Claude Code users.
+- Anthropic's Auto Memory (v2.1.59, Feb 2026) shipped with a 200-line auto-load cap that silently truncates newest entries — documented in [Issue #25006](https://github.com/anthropics/claude-code/issues/25006). This is the strongest single wedge Pebble has against the default Claude Code experience: Pebble recalls on demand via MCP tools, not pre-loaded into every session, so context-window stays cheap.
+- v0.1.0 root cause for "Claude Code doesn't use pebble tools": soft instructions ("should") + only in .pebble/memory.md which isn't auto-loaded by Claude Code like CLAUDE.md is. Fix in v0.2.0: inject MANDATORY block into global ~/.claude/CLAUDE.md (loaded every session) with strong language ("MUST", "failure mode if you don't"). Verified working — the block is now active in Max's global CLAUDE.md.
 
-## 🔄 Unprocessed Commits
+## 🎯 Active Work
 
-Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.
+- Pre-launch P0 distribution checklist (positioning/12-marketing-outputs.md §7): (1) npm publish pebble-memory, (2) GitHub repo description + topics via `gh repo edit`, (3) Plugin Marketplace PR to anthropics/claude-plugins-official, (4) Show HN, (5) r/ClaudeAI post, (6) Dev.to article. Steps 4-6 only AFTER 1-3.
+- README quickstart says `npm install -g pebble-memory` but package isn't on npm yet. Either publish to npm or rewrite quickstart to git-clone instructions. Blocker for any non-Max install.
+- v0.2.1: drop duplicated MANDATORY block from .pebble/memory.md — global CLAUDE.md already has it (token waste). Add CLI `pebble status` (currently MCP-only). Add PEBBLE_AUTO_INIT=false escape hatch for getProjectContext auto-init.
+- Set up GitHub remote for Pebble (currently no `git remote` configured). Needed for: (1) Laptop clone to get v0.2.0 stand, (2) public open-source launch per README TODO P1. Decision pending: push to public github.com/mxfschr/pebble or keep private until polished.
 
-### 52cd5cc: Initial commit: Pebble v0.1.0
-```
-.claude/settings.local.json |    7 +
- .gitignore                  |    4 +
- CLAUDE.md                   |  105 +++
- LICENSE                     |   21 +
- README.md                   |  182 +++++
- package-lock.json           | 1641 +++++++++++++++++++++++++++++++++++++++++++
- package.json                |   29 +
- src/context-tree.ts         |  137 ++++
- src/db.ts                   |  274 ++++++++
- src/extractor.ts            |  162 +++++
- src/generator.ts            |  228 ++++++
- src/hooks.ts                |  110 +++
- src/index.ts                |  372 ++++++++++
- src/mcp-server.ts           |  323 +++++++++
- src/types.ts                |   67 ++
- tsconfig.json               |   20 +
- 16 files changed, 3682 insertions(+)
-```
-<details><summary>Diff</summary>
-
-```diff
-diff --git a/.claude/settings.local.json b/.claude/settings.local.json
-new file mode 100644
-index 0000000..d4bdb5a
---- /dev/null
-+++ b/.claude/settings.local.json
-@@ -0,0 +1,7 @@
-+{
-+  "permissions": {
-+    "allow": [
-+      "Bash(npm run build)"
-+    ]
-+  }
-+}
-diff --git a/.gitignore b/.gitignore
-new file mode 100644
-index 0000000..1459bee
---- /dev/null
-+++ b/.gitignore
-@@ -0,0 +1,4 @@
-+node_modules/
-+dist/
-+.pebble/
-+*.db
-diff --git a/CLAUDE.md b/CLAUDE.md
-new file mode 100644
-index 0000000..2f30414
---- /dev/null
-+++ b/CLAUDE.md
-@@ -0,0 +1,105 @@
-+# CLAUDE.md — Pebble
-+
-+## What Pebble Is
-+
-+Open-source persistent memory for AI coding assistants (starting with Claude Code). Auto-captures git commits, queues them, lets Claude Code process them into structured memories via MCP tools. Zero API keys, zero cost, local-first.
-+
-+**Tagline:** Small stones, big picture.
-+
-+## Critical Architecture Rule
-+
-+**Pebble NEVER overwrites CLAUDE.md.** The user's CLAUDE.md is sacred — it contains their rules, workflow, identity. Pebble only:
-+1. Adds a one-line pointer on first `init` (non-destructive, one time)
-+2. Writes to `.pebble/memory.md` (auto-generated memories)
-+3. Writes to `.pebble/context-tree/` (detailed markdown files)
-+4. Creates `soul.md` template on init (only if it doesn't exist)
-+
-+**The 3-file system:**
-+- `CLAUDE.md` — User's rules, identity, workflow (MANUAL, Pebble never touches after init)
-+- `soul.md` — Claude's personality/voice for this user (MANUAL, user customizes)
-+- `.pebble/memory.md` — Accumulated knowledge from commits + MCP (AUTO-GENERATED)
-+
-+## Architecture
-+
-+**Zero LLM calls.** Git hook queues raw commit data into SQLite. Claude Code reads `.pebble/memory.md` (which includes unprocessed commits), decides what's worth remembering, calls MCP tools.
-+
-+**The flow:**
-+```
-+commit → post-commit hook → `pebble capture` → queues diff in SQLite
-+→ regenerates .pebble/memory.md + context tree
-+→ next Claude Code session reads it
-+→ Claude calls `pebble_remember` + `pebble_mark_processed`
-+```
-+
-+## File Structure
-+
-+```
-+src/
-+├── index.ts          — CLI (commander, 8 commands, soul.md template)
-+├── mcp-server.ts     — MCP server (6 tools)
-+├── db.ts             — SQLite layer (better-sqlite3, WAL)
-+├── extractor.ts      — Commit queue (captures diffs, NO LLM)
-+├── generator.ts      — Generates .pebble/memory.md, triggers context tree, CLAUDE.md pointer
-+├── context-tree.ts   — Writes memories as markdown in .pebble/context-tree/
-+├── hooks.ts          — Git post-commit hook installer
-+└── types.ts          — Types, 5 categories, config defaults
-+```
-+
-+## Tech Stack
-+
-+TypeScript, Node.js (ESM), SQLite (better-sqlite3), MCP SDK, Commander, Zod, Chalk. No external API deps.
-+
-+## Key Decisions
-+
-+- Pebble NEVER touches CLAUDE.md content (only adds pointer once)
-+- soul.md is a template users customize (personality, voice, mindset)
-+- .pebble/memory.md is the only auto-generated file Claude reads
-+- .pebble/context-tree/ has detai
-... [truncated]
-```
-</details>
-
-# ─── Pebble: 2 memories | 1 unprocessed commits ───
+# ─── Pebble: 15 memories | 0 unprocessed commits ───

@@ -4,7 +4,7 @@
 
 ## Pebble is a persistent memory system for AI coding assistants
 
-- **Added:** 2026-03-11 08:12:40
+- **Added:** 2026-03-11 08:12:40 _(fading)_
 - **Source:** manual
 - **Tags:** `overview` `architecture`
 - **ID:** 1
