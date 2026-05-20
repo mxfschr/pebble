@@ -1,5 +1,14 @@
 node_modules/
 dist/
-.pebble/
+
+# Pebble: DB + machine-specific config are private,
+# but memory.md and context-tree/ are git-trackable (shareable knowledge).
+.pebble/memory.db*
+.pebble/config.json
+.pebble/run.sh
+
+# Per-machine MCP config (hardcoded paths)
+.mcp.json
+
 *.db
 .claude/settings.local.json

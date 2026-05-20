@@ -2,7 +2,8 @@
 // ============================================================================
 // Pebble — MCP Server
 // Gives Claude Code persistent memory via MCP tools.
-// No API keys needed — Claude Code IS the intelligence layer.
+// Project path is resolved per tool call via project_path parameter,
+// so one MCP server instance works across all projects.
 // ============================================================================
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -20,30 +21,35 @@ import {
   getMemoryStats,
   decayRelevance,
 } from "./db.js";
-import { generateMemoryMd, writeMemoryMd } from "./generator.js";
+import { generateMemoryMd, writeMemoryMd, ensureClaudeMdPointer } from "./generator.js";
 import {
   getUnprocessedCommits,
   markCommitProcessed,
   markAllProcessed,
 } from "./extractor.js";
+import { installGitHook } from "./hooks.js";
 import {
   type MemoryCategory,
+  type Project,
   type PebbleConfig,
   DEFAULT_CONFIG,
   PEBBLE_DIR,
   PEBBLE_CONFIG,
 } from "./types.js";
+import type Database from "better-sqlite3";
 
 // ---------------------------------------------------------------------------
-// Resolve project path and config
+// Per-project context cache — one DB connection per project path
 // ---------------------------------------------------------------------------
 
-function resolveProjectPath(): string {
-  if (process.env.PEBBLE_PROJECT_PATH) {
-    return process.env.PEBBLE_PROJECT_PATH;
-  }
-  return process.cwd();
+interface ProjectContext {
+  db: Database.Database;
+  project: Project;
+  config: PebbleConfig;
+  projectPath: string;
 }
+
+const projectCache = new Map<string, ProjectContext>();
 
 function loadConfig(projectPath: string): PebbleConfig {
   const configPath = path.join(projectPath, PEBBLE_DIR, PEBBLE_CONFIG);
@@ -54,8 +60,72 @@ function loadConfig(projectPath: string): PebbleConfig {
   return DEFAULT_CONFIG;
 }
 
+function getProjectContext(projectPath?: string): ProjectContext {
+  // Resolve: explicit param > env var > cwd
+  const resolved = projectPath
+    || process.env.PEBBLE_PROJECT_PATH
+    || process.cwd();
+
+  // Normalize path for cache key
+  const normalized = path.resolve(resolved);
+
+  // Return cached if available
+  const cached = projectCache.get(normalized);
+  if (cached) return cached;
+
+  // Auto-initialize if .pebble/ doesn't exist
+  const pebbleDir = path.join(normalized, PEBBLE_DIR);
+  if (!fs.existsSync(pebbleDir)) {
+    fs.mkdirSync(pebbleDir, { recursive: true });
+
+    // Save default config
+    const configPath = path.join(pebbleDir, PEBBLE_CONFIG);
+    fs.writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), "utf-8");
+
+    // Init DB (openDb creates tables)
+    const db = openDb(normalized);
+    const projectName = path.basename(normalized);
+    const project = ensureProject(db, normalized, projectName);
+
+    // Install git hook (best-effort)
+    try { installGitHook(normalized); } catch {}
+
+    // Add .pebble entries to .gitignore
+    const gitignorePath = path.join(normalized, ".gitignore");
+    if (fs.existsSync(gitignorePath)) {
+      const gitignore = fs.readFileSync(gitignorePath, "utf-8");
+      if (!gitignore.includes(".pebble")) {
+        fs.appendFileSync(gitignorePath, "\n# Pebble memory (DB is private, context-tree can be shared)\n.pebble/memory.db\n.pebble/config.json\n");
+      }
+    }
+
+    // Add pointer to project CLAUDE.md
+    ensureClaudeMdPointer(normalized);
+
+    // Generate initial memory.md
+    const config = loadConfig(normalized);
+    const memoryMd = generateMemoryMd(db, project.id, config, normalized);
+    writeMemoryMd(normalized, memoryMd);
+
+    const ctx: ProjectContext = { db, project, config, projectPath: normalized };
+    projectCache.set(normalized, ctx);
+    return ctx;
+  }
+
+  // Open DB and cache
+  const config = loadConfig(normalized);
+  const db = openDb(normalized);
+  const projectName = path.basename(normalized);
+  const project = ensureProject(db, normalized, projectName);
+  decayRelevance(db, project.id, config.relevance_decay_days);
+
+  const ctx: ProjectContext = { db, project, config, projectPath: normalized };
+  projectCache.set(normalized, ctx);
+  return ctx;
+}
+
 // ---------------------------------------------------------------------------
-// MCP Server setup
+// MCP Server
 // ---------------------------------------------------------------------------
 
 const server = new McpServer({
@@ -63,14 +133,10 @@ const server = new McpServer({
   version: "0.1.0",
 });
 
-const projectPath = resolveProjectPath();
-const config = loadConfig(projectPath);
-const db = openDb(projectPath);
-const projectName = path.basename(projectPath);
-const project = ensureProject(db, projectPath, projectName);
-
-// Run decay on startup
-decayRelevance(db, project.id, config.relevance_decay_days);
+// Shared schema for project_path — every tool gets this
+const projectPathSchema = z.string()
+  .optional()
+  .describe("Absolute path to the project root. Pass your current working directory here.");
 
 // ---------------------------------------------------------------------------
 // Tool: pebble_remember
@@ -100,6 +166,7 @@ Also call this after reviewing unprocessed commits in CLAUDE.md.`,
         .max(5)
         .default([])
         .describe("Optional searchable tags (e.g. ['auth', 'api', 'postgres'])"),
+      project_path: projectPathSchema,
     },
     annotations: {
       readOnlyHint: false,
@@ -108,12 +175,12 @@ Also call this after reviewing unprocessed commits in CLAUDE.md.`,
       openWorldHint: false,
     },
   },
-  async ({ category, content, tags }) => {
-    const memory = addMemory(db, project.id, category as MemoryCategory, content, "mcp", tags);
+  async ({ category, content, tags, project_path }) => {
+    const ctx = getProjectContext(project_path);
+    const memory = addMemory(ctx.db, ctx.project.id, category as MemoryCategory, content, "mcp", tags);
 
-    // Regenerate CLAUDE.md
-    const memoryMd = generateMemoryMd(db, project.id, config, projectPath);
-    writeMemoryMd(projectPath, memoryMd);
+    const memoryMd = generateMemoryMd(ctx.db, ctx.project.id, ctx.config, ctx.projectPath);
+    writeMemoryMd(ctx.projectPath, memoryMd);
 
     return {
       content: [{
@@ -140,6 +207,7 @@ server.registerTool(
       category: z.enum(["decision", "pattern", "context", "learning", "todo"])
         .optional()
         .describe("Optional: filter by category"),
+      project_path: projectPathSchema,
     },
     annotations: {
       readOnlyHint: true,
@@ -148,13 +216,14 @@ server.registerTool(
       openWorldHint: false,
     },
   },
-  async ({ query, category }) => {
+  async ({ query, category, project_path }) => {
+    const ctx = getProjectContext(project_path);
     let memories;
     if (category) {
-      memories = getActiveMemories(db, project.id, category as MemoryCategory)
+      memories = getActiveMemories(ctx.db, ctx.project.id, category as MemoryCategory)
         .filter((m) => m.content.toLowerCase().includes(query.toLowerCase()));
     } else {
-      memories = searchMemories(db, project.id, query);
+      memories = searchMemories(ctx.db, ctx.project.id, query);
     }
 
     if (memories.length === 0) {
@@ -193,6 +262,7 @@ server.registerTool(
         .int()
         .positive()
         .describe("The ID of the memory to remove"),
+      project_path: projectPathSchema,
     },
     annotations: {
       readOnlyHint: false,
@@ -201,8 +271,9 @@ server.registerTool(
       openWorldHint: false,
     },
   },
-  async ({ memory_id }) => {
-    const removed = removeMemory(db, memory_id);
+  async ({ memory_id, project_path }) => {
+    const ctx = getProjectContext(project_path);
+    const removed = removeMemory(ctx.db, memory_id);
 
     if (!removed) {
       return {
@@ -210,8 +281,8 @@ server.registerTool(
       };
     }
 
-    const memoryMd = generateMemoryMd(db, project.id, config, projectPath);
-    writeMemoryMd(projectPath, memoryMd);
+    const memoryMd = generateMemoryMd(ctx.db, ctx.project.id, ctx.config, ctx.projectPath);
+    writeMemoryMd(ctx.projectPath, memoryMd);
 
     return {
       content: [{
@@ -231,7 +302,9 @@ server.registerTool(
   {
     title: "Memory Status",
     description: `Show memory statistics and unprocessed commit count.`,
-    inputSchema: {},
+    inputSchema: {
+      project_path: projectPathSchema,
+    },
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -239,13 +312,14 @@ server.registerTool(
       openWorldHint: false,
     },
   },
-  async () => {
-    const stats = getMemoryStats(db, project.id);
-    const unprocessed = getUnprocessedCommits(db, project.id);
-    const catConfig = config.categories;
+  async ({ project_path }) => {
+    const ctx = getProjectContext(project_path);
+    const stats = getMemoryStats(ctx.db, ctx.project.id);
+    const unprocessed = getUnprocessedCommits(ctx.db, ctx.project.id);
+    const catConfig = ctx.config.categories;
 
     const lines = [
-      `Pebble Memory: ${project.name}`,
+      `Pebble Memory: ${ctx.project.name}`,
       "─".repeat(40),
     ];
 
@@ -278,6 +352,7 @@ server.registerTool(
         .positive()
         .optional()
         .describe("Specific commit queue ID to mark processed. Omit to mark ALL as processed."),
+      project_path: projectPathSchema,
     },
     annotations: {
       readOnlyHint: false,
@@ -286,16 +361,16 @@ server.registerTool(
       openWorldHint: false,
     },
   },
-  async ({ commit_id }) => {
+  async ({ commit_id, project_path }) => {
+    const ctx = getProjectContext(project_path);
     if (commit_id) {
-      markCommitProcessed(db, commit_id);
+      markCommitProcessed(ctx.db, commit_id);
     } else {
-      markAllProcessed(db, project.id);
+      markAllProcessed(ctx.db, ctx.project.id);
     }
 
-    // Regenerate CLAUDE.md (unprocessed section will shrink/disappear)
-    const memoryMd = generateMemoryMd(db, project.id, config, projectPath);
-    writeMemoryMd(projectPath, memoryMd);
+    const memoryMd = generateMemoryMd(ctx.db, ctx.project.id, ctx.config, ctx.projectPath);
+    writeMemoryMd(ctx.projectPath, memoryMd);
 
     return {
       content: [{

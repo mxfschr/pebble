@@ -16,34 +16,38 @@ import {
 } from "./types.js";
 import { initQueueSchema } from "./extractor.js";
 
-let _db: Database.Database | null = null;
+const _dbCache = new Map<string, Database.Database>();
 
 export function getDbPath(projectPath: string): string {
   return path.join(projectPath, PEBBLE_DIR, PEBBLE_DB);
 }
 
 export function openDb(projectPath: string): Database.Database {
-  if (_db) return _db;
-
   const dbPath = getDbPath(projectPath);
+
+  // Return cached connection for this path
+  const cached = _dbCache.get(dbPath);
+  if (cached) return cached;
+
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  _db = new Database(dbPath);
-  _db.pragma("journal_mode = WAL");
-  _db.pragma("foreign_keys = ON");
-  initSchema(_db);
-  initQueueSchema(_db);
-  return _db;
+  const db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  initSchema(db);
+  initQueueSchema(db);
+  _dbCache.set(dbPath, db);
+  return db;
 }
 
 export function closeDb(): void {
-  if (_db) {
-    _db.close();
-    _db = null;
+  for (const db of _dbCache.values()) {
+    db.close();
   }
+  _dbCache.clear();
 }
 
 function initSchema(db: Database.Database): void {

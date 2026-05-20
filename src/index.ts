@@ -20,7 +20,7 @@ import {
   searchMemories,
   removeMemory,
 } from "./db.js";
-import { generateMemoryMd, writeMemoryMd, ensureClaudeMdPointer } from "./generator.js";
+import { generateMemoryMd, writeMemoryMd, ensureClaudeMdPointer, ensureGlobalClaudeMdPebble } from "./generator.js";
 import { queueLastCommit, getUnprocessedCommits } from "./extractor.js";
 import { installGitHook, uninstallGitHook } from "./hooks.js";
 import {
@@ -146,9 +146,13 @@ program
     regenerate(projectPath, config);
     console.log(chalk.green("  ✓  Generated .pebble/memory.md"));
 
-    // Add pointer to CLAUDE.md (one line, non-destructive)
+    // Add pointer to project CLAUDE.md (one line, non-destructive)
     ensureClaudeMdPointer(projectPath);
-    console.log(chalk.green("  ✓  Added Pebble pointer to CLAUDE.md"));
+    console.log(chalk.green("  ✓  Added Pebble pointer to project CLAUDE.md"));
+
+    // Inject MANDATORY instructions into global ~/.claude/CLAUDE.md
+    ensureGlobalClaudeMdPebble();
+    console.log(chalk.green("  ✓  Added Pebble rules to global ~/.claude/CLAUDE.md"));
 
     // Create soul.md template if it doesn't exist
     if (opts.soul !== false) {

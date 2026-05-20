@@ -18,25 +18,15 @@ const HEADER = `# Pebble Memory
 # ───────────────────────────────────────────────────────────────`;
 
 const PEBBLE_INSTRUCTIONS = `
-## 🪨 Pebble Memory System
+## 🪨 Pebble Memory — MANDATORY
 
-You have MCP tools for persistent memory across sessions.
-Detailed memories are in \`.pebble/context-tree/\` as markdown files.
+You MUST use Pebble MCP tools to persist knowledge across sessions. This is a core rule, not a suggestion.
+**IMPORTANT**: Always pass \`project_path\` (your current working directory) with every \`pebble_*\` tool call.
 
-**On session start:** Review any unprocessed commits below. For each one, decide
-if it contains important decisions, patterns, learnings, or context. If so, call
-\`pebble_remember\` to store them. Then call \`pebble_mark_processed\` to clear the queue.
-
-**During work:** When you make an architectural decision, discover a pattern, or
-learn something non-obvious, call \`pebble_remember\` to persist it.
-
-**Before ending a long session:** If this session involved significant decisions or
-changes, call \`pebble_remember\` for each important insight before the session ends.
-Don't rely only on git hooks — discussions and reasoning that don't end up in code
-are the most valuable things to remember.
-
-**When you need context:** Call \`pebble_recall\` to search past memories, or read
-files in \`.pebble/context-tree/\` for full details.`;
+**Session start**: Process any unprocessed commits below — call \`pebble_remember\` for insights, then \`pebble_mark_processed\`.
+**During work**: Call \`pebble_remember\` IMMEDIATELY when you make decisions, find bugs, discover patterns, or learn something non-obvious.
+**Before session ends**: Persist every important decision and learning. If you don't, the next session starts from zero.
+**Need context?**: Call \`pebble_recall\` before making assumptions.`;
 
 export function generateMemoryMd(
   db: Database.Database,
@@ -85,10 +75,23 @@ export function generateMemoryMd(
   if (unprocessed.length > 0) {
     sections.push("## 🔄 Unprocessed Commits");
     sections.push("");
-    sections.push("Review these commits. Extract important decisions, patterns, or learnings");
-    sections.push("using `pebble_remember`, then call `pebble_mark_processed` to clear this list.");
+    sections.push("Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.");
     sections.push("");
-    for (const commit of unprocessed) {
+
+    // Show last 5 with full diff, older ones as one-liners
+    const MAX_DETAILED = 5;
+    const detailed = unprocessed.slice(-MAX_DETAILED);
+    const older = unprocessed.slice(0, -MAX_DETAILED);
+
+    if (older.length > 0) {
+      sections.push(`**${older.length} older commits** (review commit messages, mark processed if not relevant):`);
+      for (const commit of older) {
+        sections.push(`- ${commit.hash.slice(0, 7)}: ${commit.message}`);
+      }
+      sections.push("");
+    }
+
+    for (const commit of detailed) {
       sections.push(`### ${commit.hash.slice(0, 7)}: ${commit.message}`);
       if (commit.diff_summary) {
         sections.push("```");
@@ -201,7 +204,7 @@ export function writeMemoryMd(projectPath: string, content: string): void {
 }
 
 /**
- * Inject a one-liner into CLAUDE.md pointing to pebble memory.
+ * Inject a one-liner into project CLAUDE.md pointing to pebble memory.
  * Only adds it once, never modifies existing content.
  */
 export function ensureClaudeMdPointer(projectPath: string): void {
@@ -223,6 +226,81 @@ export function ensureClaudeMdPointer(projectPath: string): void {
   } else {
     // No CLAUDE.md exists — create minimal one
     const minimal = `# CLAUDE.md\n\n${pointer}\n`;
+    fs.writeFileSync(claudeMdPath, minimal, "utf-8");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The global CLAUDE.md instruction block — this is what makes Claude Code
+// actually USE the pebble tools without being told.
+// ---------------------------------------------------------------------------
+
+const GLOBAL_PEBBLE_BLOCK = `
+### Pebble Memory — MANDATORY
+
+Every project with a \`.pebble/\` directory uses Pebble for persistent memory. This is not optional.
+
+**CRITICAL**: Every \`pebble_*\` tool call MUST include \`project_path\` set to your current working directory. The MCP server needs this to find the right project's database.
+
+**RULES — follow these like "No Placeholders" and "No Laziness":**
+
+1. **Session start**: Read \`.pebble/memory.md\`. If there are unprocessed commits, review them, call \`pebble_remember\` for anything worth keeping, then call \`pebble_mark_processed\`.
+2. **During work**: When you make a decision, discover a pattern, hit a bug, or learn something non-obvious — call \`pebble_remember\` immediately. Do not wait. Do not batch. One insight = one call.
+3. **Before session ends**: Call \`pebble_remember\` for every important decision or learning from this session. Conversations and reasoning that never become code are the MOST valuable things to persist.
+4. **When you need context**: Call \`pebble_recall\` to search past memories before making assumptions.
+
+**What to remember** (use the right category):
+- \`decision\`: WHY you chose an approach, not just what you did
+- \`pattern\`: Code conventions, naming rules, file structure patterns
+- \`context\`: Domain knowledge, key entities, how things connect
+- \`learning\`: Bugs found, pitfalls, non-obvious behavior, debugging insights
+- \`todo\`: Active work items, next steps, blockers
+
+**Failure mode**: If you finish a session where you made architectural decisions, fixed bugs, or learned something — and you did NOT call \`pebble_remember\` — you failed. The next session starts from zero. That is unacceptable.
+`;
+
+/**
+ * Inject Pebble instructions into the GLOBAL ~/.claude/CLAUDE.md.
+ * This ensures Claude Code uses pebble tools in EVERY project that has .pebble/.
+ * Only adds it once, never modifies existing content beyond the Pebble block.
+ */
+export function ensureGlobalClaudeMdPebble(homeDir?: string): void {
+  const home = homeDir || process.env.HOME || process.env.USERPROFILE || "";
+  if (!home) return;
+
+  const claudeDir = path.join(home, ".claude");
+  const claudeMdPath = path.join(claudeDir, "CLAUDE.md");
+
+  // Ensure ~/.claude/ exists
+  if (!fs.existsSync(claudeDir)) {
+    fs.mkdirSync(claudeDir, { recursive: true });
+  }
+
+  if (fs.existsSync(claudeMdPath)) {
+    const content = fs.readFileSync(claudeMdPath, "utf-8");
+    if (content.includes("Pebble Memory — MANDATORY")) {
+      // Already injected — check if it needs updating (e.g. project_path was added)
+      if (content.includes("project_path")) return; // Up to date
+      // Replace old block with new one
+      const startMarker = "### Pebble Memory — MANDATORY";
+      const startIdx = content.indexOf(startMarker);
+      if (startIdx >= 0) {
+        // Find end of block — next ### heading or end of file
+        const afterStart = content.indexOf("\n###", startIdx + startMarker.length);
+        const blockEnd = afterStart >= 0 ? afterStart : content.length;
+        const before = content.slice(0, startIdx).trimEnd();
+        const after = content.slice(blockEnd);
+        const updated = before + "\n" + GLOBAL_PEBBLE_BLOCK + after;
+        fs.writeFileSync(claudeMdPath, updated, "utf-8");
+      }
+      return;
+    }
+    // Append at end
+    const updated = content.trimEnd() + "\n" + GLOBAL_PEBBLE_BLOCK;
+    fs.writeFileSync(claudeMdPath, updated, "utf-8");
+  } else {
+    // No global CLAUDE.md — create with Pebble block
+    const minimal = `# CLAUDE.md\n${GLOBAL_PEBBLE_BLOCK}`;
     fs.writeFileSync(claudeMdPath, minimal, "utf-8");
   }
 }
