@@ -24,6 +24,12 @@ import { generateMemoryMd, writeMemoryMd, ensureClaudeMdPointer, ensureGlobalCla
 import { queueLastCommit, getUnprocessedCommits } from "./extractor.js";
 import { installGitHook, uninstallGitHook } from "./hooks.js";
 import {
+  initUserMemory,
+  getUserStatus,
+  appendUserNote,
+  readUserFile,
+} from "./user.js";
+import {
   type MemoryCategory,
   type PebbleConfig,
   DEFAULT_CONFIG,
@@ -31,7 +37,7 @@ import {
   PEBBLE_CONFIG,
 } from "./types.js";
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 const SOUL_TEMPLATE = `# soul.md
 # Define how Claude Code should feel when working with you.
@@ -427,6 +433,78 @@ program
         ? chalk.green("\n  ✓ Auto-sync is ON for this project.\n")
         : chalk.gray("\n  Auto-sync is OFF for this project.\n"));
     })
+  );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pebble user — global user memory (~/.pebble/user/)
+// ─────────────────────────────────────────────────────────────────────────────
+
+program
+  .command("user")
+  .description("Manage global user memory (voice.md, about.md, notes.md in ~/.pebble/user/)")
+  .addCommand(
+    new Command("init")
+      .description("Create ~/.pebble/user/ with starter templates")
+      .action(() => {
+        const result = initUserMemory();
+        console.log(chalk.green(`\n  ✓ User memory directory: ${result.root}`));
+        if (result.created.length > 0) {
+          console.log(chalk.green(`  ✓ Created:`));
+          for (const f of result.created) {
+            console.log(chalk.gray(`    + ${path.basename(f)}`));
+          }
+        }
+        if (result.existed.length > 0) {
+          console.log(chalk.yellow(`  Already existed (untouched):`));
+          for (const f of result.existed) {
+            console.log(chalk.gray(`    · ${path.basename(f)}`));
+          }
+        }
+        console.log(chalk.gray(`\n  Next: edit voice.md and about.md to fit yourself.`));
+        console.log(chalk.gray(`  Claude will read them at session start.\n`));
+      })
+  )
+  .addCommand(
+    new Command("show")
+      .description("Show the current state of user memory")
+      .action(() => {
+        const status = getUserStatus();
+        if (!status.exists) {
+          console.log(chalk.yellow(`\n  No user memory yet. Run \`pebble user init\` to create it.\n`));
+          return;
+        }
+        console.log(chalk.bold(`\n  User memory at ${status.root}\n`));
+        console.log(`  voice.md:  ${status.files.voice.exists ? `${status.files.voice.lines} lines, ${status.files.voice.bytes} bytes` : chalk.red("missing")}`);
+        console.log(`  about.md:  ${status.files.about.exists ? `${status.files.about.lines} lines, ${status.files.about.bytes} bytes` : chalk.red("missing")}`);
+        console.log(`  notes.md:  ${status.files.notes.exists ? `${status.files.notes.entries} entries, ${status.files.notes.bytes} bytes` : chalk.red("missing")}\n`);
+      })
+  )
+  .addCommand(
+    new Command("note")
+      .description("Append an observation to notes.md")
+      .argument("<text>", "What to note (one durable observation about the user)")
+      .action((text: string) => {
+        const note = appendUserNote(text);
+        console.log(chalk.green(`\n  ✓ Noted at ${note.timestamp}`));
+        console.log(chalk.gray(`    → ~/.pebble/user/notes.md\n`));
+      })
+  )
+  .addCommand(
+    new Command("read")
+      .description("Print the contents of voice.md, about.md, or notes.md")
+      .argument("<which>", "voice | about | notes")
+      .action((which: string) => {
+        if (which !== "voice" && which !== "about" && which !== "notes") {
+          console.log(chalk.red(`\n  ✗ Unknown file: ${which}. Use voice, about, or notes.\n`));
+          return;
+        }
+        const content = readUserFile(which as "voice" | "about" | "notes");
+        if (content === null) {
+          console.log(chalk.yellow(`\n  ${which}.md does not exist. Run \`pebble user init\` to create starter templates.\n`));
+          return;
+        }
+        console.log(content);
+      })
   );
 
 program.parse();

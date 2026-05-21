@@ -229,12 +229,20 @@ export function ensureClaudeMdPointer(projectPath: string): void {
 const GLOBAL_PEBBLE_BLOCK = `
 ### Pebble Memory — MANDATORY
 
-Projects with a \`.pebble/\` directory use Pebble MCP tools. Always pass \`project_path\` (current working directory) to every \`pebble_*\` call.
+Pebble manages two layers of memory: **project memory** (per-repo) and **user memory** (global, cross-project).
 
+**Project memory** — for any project with a \`.pebble/\` directory:
+- Always pass \`project_path\` (current working directory) to every \`pebble_*\` call.
 - **Session start**: Read \`.pebble/memory.md\`. Process unprocessed commits via \`pebble_remember\` then \`pebble_mark_processed\`.
 - **During work**: Call \`pebble_remember\` immediately for decisions, patterns, learnings, bugs, or todos. Don't batch. Categories: decision, pattern, context, learning, todo.
 - **Before session ends**: Persist every important insight — conversations that never become code are the most valuable.
 - **Need context**: Call \`pebble_recall\` before assuming.
+
+**User memory** — global, in \`~/.pebble/user/\` (machine-local):
+- **Session start**: If \`~/.pebble/user/\` exists, read \`voice.md\` (how to communicate with this user) and \`about.md\` (who they are). Apply what you read to your tone and assumptions.
+- **During work**: Call \`pebble_user_note\` when you observe something durable about the user — communication style, preferences, cross-project context, life situation that affects work. Do not log session-specific or project-specific things here (those go in project memory).
+- **Need context**: Call \`pebble_user_recall\` to search past observations, or \`pebble_user_read\` to load a specific file.
+- If \`~/.pebble/user/\` does not exist, do not nag — only suggest \`pebble user init\` if communication style or identity is directly relevant to the current task.
 `;
 
 /**

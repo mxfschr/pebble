@@ -30,6 +30,12 @@ import {
 import { installGitHook } from "./hooks.js";
 import { tryAutoSync, tryAutoPull, shouldPullOnceThisSession } from "./sync.js";
 import {
+  appendUserNote,
+  recallUserMemory,
+  getUserStatus,
+  readUserFile,
+} from "./user.js";
+import {
   type MemoryCategory,
   type Project,
   type PebbleConfig,
@@ -399,6 +405,180 @@ server.registerTool(
           ? `Commit #${commit_id} marked as processed. memory.md updated.`
           : `All commits marked as processed. memory.md updated.`,
       }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Tool: pebble_user_note
+// Append an observation about the user to ~/.pebble/user/notes.md
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "pebble_user_note",
+  {
+    title: "Note Something About the User",
+    description: `Append an observation about the user to global user memory (~/.pebble/user/notes.md).
+
+Use this when you learn something durable about how the user thinks, communicates, what they're working on broadly, or any cross-project context that would be useful to remember in future sessions across any project.
+
+Do NOT use this for:
+- Project-specific decisions (use pebble_remember instead)
+- Session-specific state that won't matter next week
+- Things the user already wrote in their own voice.md or about.md
+
+Examples of good notes:
+- "User switched primary editor from X to Y"
+- "User prefers async communication on weekday mornings"
+- "User uses 'we' when describing collaborative work — treats Claude as teammate, not tool"
+
+Examples of what NOT to note:
+- "User asked about implementing feature X today" (project-specific, ephemeral)
+- "User said hi" (no durable signal)`,
+    inputSchema: {
+      content: z.string()
+        .min(5, "Note must be at least 5 characters")
+        .max(500, "Keep notes concise — max 500 characters")
+        .describe("What you observed about the user. One sentence, durable across sessions."),
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  async ({ content }) => {
+    const note = appendUserNote(content);
+    return {
+      content: [{
+        type: "text",
+        text: `Noted: "${note.content}"\n(appended to ~/.pebble/user/notes.md at ${note.timestamp})`,
+      }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Tool: pebble_user_recall
+// Search across voice.md, about.md, notes.md
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "pebble_user_recall",
+  {
+    title: "Recall User Memory",
+    description: `Search user-level memory (voice.md, about.md, notes.md) by keyword. Use when you need to remember something about the user that isn't in your current context — communication preferences, identity, past observations.`,
+    inputSchema: {
+      query: z.string()
+        .min(2, "Search query must be at least 2 characters")
+        .describe("Keywords to search for across all three user memory files."),
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  async ({ query }) => {
+    const matches = recallUserMemory(query);
+
+    if (matches.length === 0) {
+      return {
+        content: [{ type: "text", text: `No user memory found matching "${query}".` }],
+      };
+    }
+
+    const formatted = matches.map((m) =>
+      `[${m.source}.md]\n${m.matches.map((line) => `  ${line}`).join("\n")}`
+    ).join("\n\n");
+
+    return {
+      content: [{
+        type: "text",
+        text: `Found in user memory:\n\n${formatted}`,
+      }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Tool: pebble_user_status
+// Show what user memory exists
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "pebble_user_status",
+  {
+    title: "User Memory Status",
+    description: `Show whether user memory files exist and their size. Useful to verify setup or check if voice.md / about.md have been customized yet.`,
+    inputSchema: {},
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  async () => {
+    const status = getUserStatus();
+    if (!status.exists) {
+      return {
+        content: [{
+          type: "text",
+          text: `No user memory initialized.\nRun \`pebble user init\` to create ~/.pebble/user/ with starter templates.`,
+        }],
+      };
+    }
+
+    const lines = [
+      `User memory: ${status.root}`,
+      "─".repeat(40),
+      `voice.md:  ${status.files.voice.exists ? `${status.files.voice.lines} lines, ${status.files.voice.bytes} bytes` : "missing"}`,
+      `about.md:  ${status.files.about.exists ? `${status.files.about.lines} lines, ${status.files.about.bytes} bytes` : "missing"}`,
+      `notes.md:  ${status.files.notes.exists ? `${status.files.notes.entries} entries, ${status.files.notes.bytes} bytes` : "missing"}`,
+    ];
+
+    return {
+      content: [{ type: "text", text: lines.join("\n") }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Tool: pebble_user_read
+// Read a specific user memory file (voice / about / notes)
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "pebble_user_read",
+  {
+    title: "Read a User Memory File",
+    description: `Read the full content of one of the three user memory files. Use at session start (or when context is missing) to learn the user's voice preferences, identity, and past observations.`,
+    inputSchema: {
+      which: z.enum(["voice", "about", "notes"])
+        .describe("Which file to read: voice (communication style), about (identity), or notes (Claude's past observations)."),
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
+  async ({ which }) => {
+    const content = readUserFile(which);
+    if (content === null) {
+      return {
+        content: [{
+          type: "text",
+          text: `${which}.md does not exist yet. Run \`pebble user init\` to create starter templates.`,
+        }],
+      };
+    }
+    return {
+      content: [{ type: "text", text: content }],
     };
   }
 );

@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">🪨 Pebble</h1>
   <p align="center"><strong>Open-source, git-native memory for Claude Code.</strong></p>
-  <p align="center">Your AI's accumulated knowledge lives in your repo. Synced via <code>git pull</code>. Recalled on demand. Costs nothing.</p>
+  <p align="center">Per-project knowledge in your repo. Per-user voice and context machine-local. Both git-versionable. No cloud.</p>
 </p>
 
 <p align="center">
@@ -145,6 +145,8 @@ pebble init
 
 ## MCP tools
 
+**Project memory** (per-repo, in `.pebble/`):
+
 | Tool | What it does |
 |---|---|
 | `pebble_remember` | Store a memory with category + tags |
@@ -153,11 +155,66 @@ pebble init
 | `pebble_status` | Show memory stats + unprocessed commit count |
 | `pebble_mark_processed` | Clear commits after review |
 
-Every call takes a `project_path` parameter — one global MCP server handles all your projects.
+Every project-memory call takes a `project_path` parameter — one global MCP server handles all your projects.
+
+**User memory** (global, in `~/.pebble/user/`):
+
+| Tool | What it does |
+|---|---|
+| `pebble_user_note` | Record a durable observation about the user |
+| `pebble_user_recall` | Search across voice.md, about.md, notes.md |
+| `pebble_user_status` | Show whether user memory exists |
+| `pebble_user_read` | Read one of the three user memory files |
+
+User memory has no `project_path` — it spans every project.
+
+## User memory: voice, about, notes
+
+Project memory captures decisions about code. User memory captures who *you* are and how Claude should communicate with you — across every project, every session.
+
+```bash
+pebble user init
+```
+
+This creates `~/.pebble/user/` with three files:
+
+```
+~/.pebble/user/
+├── voice.md     # how Claude should communicate (you edit)
+├── about.md     # who you are, context (you edit)
+└── notes.md     # observations Claude appends over time
+```
+
+`voice.md` and `about.md` ship as **generic templates with placeholders**. Fill them in yourself — they're machine-local and never committed to this repo.
+
+`notes.md` grows over time as Claude calls `pebble_user_note` when it learns something durable about you (e.g. "user prefers async over sync", "user switched primary editor from X to Y"). You can edit or trim it any time.
+
+At session start, Claude reads `voice.md` and `about.md` and applies them to tone and assumptions. The MANDATORY block in `~/.claude/CLAUDE.md` (auto-injected on `pebble init`) instructs it to do so.
+
+### Why this is separate from `~/.claude/CLAUDE.md`
+
+You can already put personal context in your global `CLAUDE.md`. That works — but:
+- It mixes user identity with global *rules and workflows* (which is what CLAUDE.md is meant for)
+- It doesn't grow automatically — you have to remember to update it
+- It's one undifferentiated blob — voice + context + rules + product list
+
+Pebble's user memory separates three concerns cleanly: how Claude *speaks* (voice), who you *are* (about), and what Claude has *noticed* (notes). All three are plain markdown — you can still edit them by hand, or let Claude grow `notes.md` as you work.
+
+### CLI for user memory
+
+```bash
+pebble user init             # Create ~/.pebble/user/ with templates
+pebble user show             # Show file sizes / entry counts
+pebble user note "<text>"    # Append a note manually
+pebble user read voice       # Print contents of voice.md
+pebble user read about       # Print about.md
+pebble user read notes       # Print notes.md
+```
 
 ## CLI
 
 ```bash
+# Project memory (run inside a project's working directory)
 pebble init               # Initialize Pebble in this repo
 pebble capture            # Queue latest commit (git hook does this automatically)
 pebble add <cat> <text>   # Manually add a memory
@@ -170,6 +227,12 @@ pebble hooks uninstall    # Remove git hook
 pebble watch enable       # Auto-sync: commit + push on remember, pull on session start
 pebble watch disable      # Back to manual git workflow
 pebble watch status       # Check if auto-sync is on for this project
+
+# User memory (global, machine-local)
+pebble user init          # Create ~/.pebble/user/ with starter templates
+pebble user show          # Show file sizes / entry counts
+pebble user note "<text>" # Append observation to notes.md
+pebble user read <which>  # Print voice / about / notes
 ```
 
 ## Cross-machine workflow

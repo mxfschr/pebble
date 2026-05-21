@@ -39,49 +39,12 @@
 
 Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.
 
-**4 older commits** (review commit messages, mark processed if not relevant):
+**5 older commits** (review commit messages, mark processed if not relevant):
 - 7b103ba: v0.2.1: Positioning lock — git-native AI memory for Claude Code
 - 61ae584: v0.2.2: Context-window efficiency — ~345 tokens saved per session
 - ba25e2d: test: sync verification token added to memory.md
 - 8a28563: v0.3.0: Auto-sync — pebble watch enable
-
-### d37009c: pebble: auto-sync — test: auto-sync E2E verification
-```
-.pebble/memory.md | 162 ++----------------------------------------------------
- 1 file changed, 5 insertions(+), 157 deletions(-)
-```
-<details><summary>Diff</summary>
-
-```diff
-diff --git a/.pebble/memory.md b/.pebble/memory.md
-index 6cec6d9..a9b5bb8 100644
---- a/.pebble/memory.md
-+++ b/.pebble/memory.md
-@@ -22,163 +22,11 @@
- - Market reality (May 2026): claude-mem dominates (77k stars, Marketplace, npx-install). Anthropic ships Auto Memory + API Memory Tool + Managed Agents + Claude Dreaming. AGENTS.md in 60k+ projects. Cursor REMOVED Memories (anti-validation). HN skeptics: "CLAUDE.md gives 90%". Pain is real but power-user-only, not mass-market. Pebble's addressable: multi-machine power-users, not all Claude Code users.
- - Anthropic's Auto Memory (v2.1.59, Feb 2026) shipped with a 200-line auto-load cap that silently truncates newest entries — documented in [Issue #25006](https://github.com/anthropics/claude-code/issues/25006). This is the strongest single wedge Pebble has against the default Claude Code experience: Pebble recalls on demand via MCP tools, not pre-loaded into every session, so context-window stays cheap.
- - v0.1.0 root cause for "Claude Code doesn't use pebble tools": soft instructions ("should") + only in .pebble/memory.md which isn't auto-loaded by Claude Code like CLAUDE.md is. Fix in v0.2.0: inject MANDATORY block into global ~/.claude/CLAUDE.md (loaded every session) with strong language ("MUST", "failure mode if you don't"). Verified working — the block is now active in Max's global CLAUDE.md.
--## 🎯 Active Work
--- Pre-launch P0 distribution checklist (positioning/12-marketing-outputs.md §7): (1) npm publish pebble-memory, (2) GitHub repo description + topics via `gh repo edit`, (3) Plugin Marketplace PR to anthropics/claude-plugins-official, (4) Show HN, (5) r/ClaudeAI post, (6) Dev.to article. Steps 4-6 only AFTER 1-3.
--- README quickstart says `npm install -g pebble-memory` but package isn't on npm yet. Either publish to npm or rewrite quickstart to git-clone instructions. Blocker for any non-Max install.
--- v0.2.1: drop duplicated MANDATORY block from .pebble/memory.md — global CLAUDE.md already has it (token waste). Add CLI `pebble status` (currently MCP-only). Add PEBBLE_AUTO_INIT=false escape hatch for getProjectContext auto-init.
--- Set up GitHub remote for Pebble (currently no `git remote` configured). Needed for: (1) Laptop clone to get v0.2.0 stand, (2) public open-source launch per README TODO P1. Decision pending: push to public github.com/mxfschr/pebble or keep private until polished.
- ## 🔄 Unprocessed Commits
- 
--Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.
-+- **7b103ba**: v0.2.1: Positioning lock — git-native AI memory for Claude Code
-+- **61ae584**: v0.2.2: Context-window efficiency — ~345 tokens saved per session
-+- **ba25e2d**: test: sync verification token added to memory.md
-+- **8a28563**: v0.3.0: Auto-sync — pebble watch enable
- 
--### 7b103ba: v0.2.1: Positioning lock — git-native AI memory for Claude Code
--```
--.pebble/context-tree/README.md             |  25 ++-
-- .pebble/context-tree/active-work/README.md |  31 +++
-- .pebble/co
-... [truncated]
-```
-</details>
+- d37009c: pebble: auto-sync — test: auto-sync E2E verification
 
 ### e06ee9f: fix: regenerate memory.md after auto-sync test race
 ```
@@ -245,4 +208,58 @@ index 3db8868..11a5b71 100644
 ```
 </details>
 
-# ─── Pebble: 25 memories | 9 unprocessed commits ───
+### 462e1d4: pebble: auto-sync — +pattern: Generic open-source rule for Pebble: No hardcoded user-speci
+```
+.pebble/context-tree/README.md          |   3 +-
+ .pebble/context-tree/patterns/README.md |   9 ++-
+ .pebble/memory.md                       | 107 +++++++++++++++++---------------
+ 3 files changed, 66 insertions(+), 53 deletions(-)
+```
+<details><summary>Diff</summary>
+
+```diff
+diff --git a/.pebble/context-tree/README.md b/.pebble/context-tree/README.md
+index 46684d0..39c2c9e 100644
+--- a/.pebble/context-tree/README.md
++++ b/.pebble/context-tree/README.md
+@@ -10,8 +10,9 @@
+ - v0.2.2 fixed context-window efficiency: global MANDATORY block in ~/.claude/CLAUDE.md cut from 21 lines/1663 bytes/~400 tokens to 8 lines/731 bytes/~175 tokens. Duplicated header in .pebble/memory.md cut from ~10 lines/620 bytes/~150 tokens to 1 line/140 bytes/~30 tokens. Total saves ~345 tokens per session. ensureGlobalClaudeMdPebble() is now idempotent (re-syncs block on every init).
+ - _...and 5 more_
+ 
+-## 🔧 [Patterns & Conventions](./patterns/README.md) (1)
++## 🔧 [Patterns & Conventions](./patterns/README.md) (2)
+ 
++- Generic open-source rule for Pebble: No hardcoded user-specific strings in src/, README, templates, or default configs. Templates use [placeholders] or {{variables}}. Examples in docs are abstract ("when the user says X"). Personal content lives only in ~/.pebble/user/ which is machine-local and never committed to the open-source repo.
+ - .gitignore strategy for Pebble installations: ignore `.pebble/memory.db*`, `.pebble/config.json`, `.pebble/run.sh`, `.mcp.json`. Track `.pebble/memory.md` and `.pebble/context-tree/`. The auto-init code in mcp-server.ts:getProjectContext appends only memory.db + config.json to .gitignore — leaves the trackable knowledge files alone.
+ 
+ ## 📋 [Project Context](./context/README.md) (4)
+diff --git a/.pebble/context-tree/patterns/README.md b/.pebble/context-tree/patterns/README.md
+index 2ea0829..ded330b 100644
+--- a/.pebble/context-tree/patterns/README.md
++++ b/.pebble/context-tree/patterns/README.md
+@@ -1,6 +1,13 @@
+ # 🔧 Patterns & Conventions
+ 
+-> Auto-generated by Pebble. 1 active memories.
++> Auto-generated by Pebble. 2 active memories.
++
++## Generic open-source rule for Pebble: No hardcoded user-specific strings in src/, README, templates, or default configs. Templates use [placeholders] or {{variables}}. Examples in docs are abstract ("when the user says X"). Personal content lives only in ~/.pebble/user/ which is machine-local and never committed to the open-source repo.
++
++- **Added:** 2026-05-21 00:46:02
++- **Source:** mcp
++- **Tags:** `open-source` `generic` `principle`
++- **ID:** 28
+ 
+ ## .gitignore strategy for Pebble installations: ignore `.pebble/memory.db*`, `.pebble/config.json`, `.pebble/run.sh`, `.mcp.json`. Track `.pebble/memory.md` and `.pebble/context-tree/`. The auto-init code in mcp-server.ts:getProjectContext appends only memory.db + config.json to .gitignore — leaves the trackable knowledge files alone.
+ 
+diff --git a/.pebble/memory.md b/.pebble/memory.md
+index 93d6b4b..5f1a3f8 100644
+--- a/.pebble/memory.md
++++ b/.pebble/memory.md
+@@ -21,6 +21,7 @@
+ - MCP server registration: global via `claude mcp add -s user pebble node /path/to/dist/mcp-server.js`, NOT per-project .mcp.json. Why: v0.2.0 made the server multi-project capable (project_path param + getProjectContext cach
+... [truncated]
+```
+</details>
+
+# ─── Pebble: 25 memories | 10 unprocessed commits ───
