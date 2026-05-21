@@ -12,3 +12,8 @@ dist/
 
 *.db
 .claude/settings.local.json
+
+# Positioning work — internal strategy docs (competitive analysis,
+# evidence log, roadmap). Kept private to avoid leaking competitive
+# intel + maintainer voice notes. Lives only on the maintainer's machine.
+positioning/
