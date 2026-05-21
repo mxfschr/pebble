@@ -227,6 +227,10 @@ your-project/
 - Git
 - Claude Code (or any MCP-capable client — Claude Code first-supported)
 
+> Pebble works with **Claude Code** — whether you use the CLI (`claude.exe` / `claude` in your terminal) or the **Code tab in Claude Desktop App** (the GUI re-released April 2026). Both share the same engine, the same `~/.claude/CLAUDE.md`, the same MCP config, the same auto-memory in `~/.claude/projects/`. Pebble installs identically for both.
+>
+> Pebble does **not** yet bridge memory across the Chat, Cowork, and Code tabs of Claude Desktop App — each tab has its own isolated memory system today (Chat: cloud-synced; Cowork: project-local; Code: `~/.claude/projects/.../memory/MEMORY.md`). Cross-tab Pebble bridging is on the P2 roadmap, currently blocked by [Windows MCP bug #42453](https://github.com/anthropics/claude-code/issues/42453).
+
 ## Roadmap
 
 P0 (before 1.0):
