@@ -25,6 +25,7 @@
 - Generic open-source rule for Pebble: No hardcoded user-specific strings in src/, README, templates, or default configs. Templates use [placeholders] or {{variables}}. Examples in docs are abstract ("when the user says X"). Personal content lives only in ~/.pebble/user/ which is machine-local and never committed to the open-source repo.
 - .gitignore strategy for Pebble installations: ignore `.pebble/memory.db*`, `.pebble/config.json`, `.pebble/run.sh`, `.mcp.json`. Track `.pebble/memory.md` and `.pebble/context-tree/`. The auto-init code in mcp-server.ts:getProjectContext appends only memory.db + config.json to .gitignore — leaves the trackable knowledge files alone.
 ## 💡 Learnings
+- Bug v0.5.1: pebble init regenerated memory.md from empty local DB on fresh machine after git pull, overwriting synced content. Fix: init only generates memory.md if file doesn't exist. memory.md is updated by pebble_remember, not init. Pattern: local-empty state must not clobber synced content (2nd cross-machine bug after v0.3.0 race).
 - Race condition in tryAutoSync E2E test: `git commit --only file` reads file at commit-time from disk, not staging. If a concurrent writer (e.g. old MCP server still in memory) overwrites memory.md between stage and commit, the commit captures wrong state. Commit d37009c truncated memory.md 162→5 lines this way; fix e06ee9f regenerated. Practical rule: only the MCP server writes memory.md.
 - Market reality (May 2026): claude-mem dominates (77k stars, Marketplace, npx-install). Anthropic ships Auto Memory + API Memory Tool + Managed Agents + Claude Dreaming. AGENTS.md in 60k+ projects. Cursor REMOVED Memories (anti-validation). HN skeptics: "CLAUDE.md gives 90%". Pain is real but power-user-only, not mass-market. Pebble's addressable: multi-machine power-users, not all Claude Code users.
 - Anthropic's Auto Memory (v2.1.59, Feb 2026) shipped with a 200-line auto-load cap that silently truncates newest entries — documented in [Issue #25006](https://github.com/anthropics/claude-code/issues/25006). This is the strongest single wedge Pebble has against the default Claude Code experience: Pebble recalls on demand via MCP tools, not pre-loaded into every session, so context-window stays cheap.
@@ -42,7 +43,7 @@
 
 Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.
 
-**12 older commits** (review commit messages, mark processed if not relevant):
+**13 older commits** (review commit messages, mark processed if not relevant):
 - 7b103ba: v0.2.1: Positioning lock — git-native AI memory for Claude Code
 - 61ae584: v0.2.2: Context-window efficiency — ~345 tokens saved per session
 - ba25e2d: test: sync verification token added to memory.md
@@ -55,86 +56,7 @@ Review these commits. Call `pebble_remember` for insights, then `pebble_mark_pro
 - 462e1d4: pebble: auto-sync — +pattern: Generic open-source rule for Pebble: No hardcoded user-speci
 - dcaac96: v0.4.0: User memory — voice.md, about.md, notes.md in ~/.pebble/user/
 - fd607e8: pebble: auto-sync — +todo: Open question: should positioning/ directory stay in public
-
-### 3e05711: chore: move positioning/ out of public repo
-```
-.gitignore                                 |   5 +
- .pebble/memory.md                          |  90 ++++++------
- positioning/00-project-brief.md            | 115 ----------------
- positioning/02-vocabulary-baggage.md       | 104 --------------
- positioning/03-competitive-alternatives.md | 161 ----------------------
- positioning/04-unique-attributes.md        | 110 ---------------
- positioning/05-value-themes.md             |  98 -------------
- positioning/06-target-segments.md          | 111 ---------------
- positioning/07-market-category.md          | 125 -----------------
- positioning/09-positioning-canvas.md       | 126 -----------------
- positioning/10-sales-story.md              |  79 -----------
- positioning/12-marketing-outputs.md        | 174 -----------------------
- positioning/evidence-log.md                | 214 -----------------------------
- 13 files changed, 50 insertions(+), 1462 deletions(-)
-```
-<details><summary>Diff</summary>
-
-```diff
-diff --git a/.gitignore b/.gitignore
-index a31eff5..2975067 100644
---- a/.gitignore
-+++ b/.gitignore
-@@ -12,3 +12,8 @@ dist/
- 
- *.db
- .claude/settings.local.json
-+
-+# Positioning work — internal strategy docs (competitive analysis,
-+# evidence log, roadmap). Kept private to avoid leaking competitive
-+# intel + maintainer voice notes. Lives only on the maintainer's machine.
-+positioning/
-diff --git a/.pebble/memory.md b/.pebble/memory.md
-index e9b5499..2544518 100644
---- a/.pebble/memory.md
-+++ b/.pebble/memory.md
-@@ -40,56 +40,14 @@
- 
- Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.
- 
--**6 older commits** (review commit messages, mark processed if not relevant):
-+**7 older commits** (review commit messages, mark processed if not relevant):
- - 7b103ba: v0.2.1: Positioning lock — git-native AI memory for Claude Code
- - 61ae584: v0.2.2: Context-window efficiency — ~345 tokens saved per session
- - ba25e2d: test: sync verification token added to memory.md
- - 8a28563: v0.3.0: Auto-sync — pebble watch enable
- - d37009c: pebble: auto-sync — test: auto-sync E2E verification
- - e06ee9f: fix: regenerate memory.md after auto-sync test race
--
--### 8260069: memory: session-end snapshot (v0.3.0 launch, race-learning, repo-live, todos)
--```
--.pebble/context-tree/README.md             |  21 +--
-- .pebble/context-tree/active-work/README.md |   9 +-
-- .pebble/context-tree/context/README.md     |   9 +-
-- .pebble/context-tree/decisions/README.md   |   9 +-
-- .pebble/context-tree/learnings/README.md   |   9 +-
-- .pebble/memory.md                          | 242 ++++++++++++++++++++++++++++-
-- 6 files changed, 278 insertions(+), 21 deletions(-)
--```
--<details><summary>Diff</summary>
--
--```diff
--diff --git a/.pebble/context-tree/README.md b/.pebble/context-tree/README.md
--index fd7dfb0..057b4b1 100644
----- a/.pebble/context-tree/README.md
--+++ b/.pebble/context-tree/README.md
--@@ -3,32 +3,33 @@
-- > Your project's accumulated knowledge. Auto-generated by Pebble.
-- > These files are human-readable, git-trackable, and can be read by any AI tool.
-- 
---## ⚡ [Decisions](./decisions/README.md) (6)
--+## ⚡ [Decisions](./decisions/README.md) (7)
-- 
--+- v0.3.0 launched 2026-05-20: `pebble watch enable/disable/status` CLI plus opt-in auto-sync via .pebble/config.json (auto_sync: true). After every pebble_remember/forget/mark_processed: silent git add+commit+push of .pebble/. On first getProjectContext per MCP session: silent git pull --rebase. Both best-effort, errors swallowed. Closes "manual push/pull" UX gap without abandoning git-native positioning. See src/sync.ts + README Cross-machine workflow section.
-- - v0.2.2 fixed context-window efficiency: global MANDATORY block in ~/.claude/CLAUDE.md cut from 21 lines/1663 bytes/~400 tokens to 8 lines/731 bytes/~175 tokens. Duplicated header in .pebble/memory.md cut from ~10 lines/620 bytes/~150 tokens to 1 line/140 bytes/~30 tokens. Total saves ~345 tokens per session. ensureGlobalClaudeMdPebb
-... [truncated]
-```
-</details>
+- 3e05711: chore: move positioning/ out of public repo
 
 ### adbe994: pebble: auto-sync — +todo: Handoff 2026-05-21 nachts: v0.4.0 live, positioning/ raus au
 ```
@@ -341,4 +263,59 @@ index e97b7cf..05572fa 100644
 ```
 </details>
 
-# ─── Pebble: 28 memories | 17 unprocessed commits ───
+### c96211c: v0.5.1: fix — pebble init no longer overwrites existing memory.md
+```
+.pebble/memory.md | 92 +++++++++++++++++++++++++++++--------------------------
+ package.json      |  2 +-
+ src/index.ts      | 18 ++++++++---
+ 3 files changed, 63 insertions(+), 49 deletions(-)
+```
+<details><summary>Diff</summary>
+
+```diff
+diff --git a/.pebble/memory.md b/.pebble/memory.md
+index da6aff6..0c98177 100644
+--- a/.pebble/memory.md
++++ b/.pebble/memory.md
+@@ -42,7 +42,7 @@
+ 
+ Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.
+ 
+-**11 older commits** (review commit messages, mark processed if not relevant):
++**12 older commits** (review commit messages, mark processed if not relevant):
+ - 7b103ba: v0.2.1: Positioning lock — git-native AI memory for Claude Code
+ - 61ae584: v0.2.2: Context-window efficiency — ~345 tokens saved per session
+ - ba25e2d: test: sync verification token added to memory.md
+@@ -54,48 +54,7 @@ Review these commits. Call `pebble_remember` for insights, then `pebble_mark_pro
+ - a0ea19d: pebble: auto-sync — +decision: v0.4.0 baut Global User Memory: ~/.pebble/user/{voice.md, ab
+ - 462e1d4: pebble: auto-sync — +pattern: Generic open-source rule for Pebble: No hardcoded user-speci
+ - dcaac96: v0.4.0: User memory — voice.md, about.md, notes.md in ~/.pebble/user/
+-
+-### fd607e8: pebble: auto-sync — +todo: Open question: should positioning/ directory stay in public
+-```
+-.pebble/context-tree/README.md             |  6 +--
+- .pebble/context-tree/active-work/README.md |  9 +++-
+- .pebble/memory.md                          | 82 +++++++++++++++++++++---------
+- 3 files changed, 68 insertions(+), 29 deletions(-)
+-```
+-<details><summary>Diff</summary>
+-
+-```diff
+-diff --git a/.pebble/context-tree/README.md b/.pebble/context-tree/README.md
+-index 39c2c9e..2b6a15f 100644
+---- a/.pebble/context-tree/README.md
+-+++ b/.pebble/context-tree/README.md
+-@@ -29,9 +29,9 @@
+- - Anthropic's Auto Memory (v2.1.59, Feb 2026) shipped with a 200-line auto-load cap that silently truncates newest entries — documented in [Issue #25006](https://github.com/anthropics/claude-code/issues/25006). This is the strongest single wedge Pebble has against the default Claude Code experience: Pebble recalls on demand via MCP tools, not pre-loaded into every session, so context-window stays cheap.
+- - _...and 2 more_
+- 
+--## 🎯 [Active Work](./active-work/README.md) (6)
+-+## 🎯 [Active Work](./active-work/README.md) (7)
+- 
+-+- Open question: should positioning/ directory stay in public GitHub repo? Pro: transparency, contributor-onboarding, dogfooding. Contra: competitive intel leak (vs claude-mem analysis, roadmap gaps), market-narrowing in public, U1 contains user's verbatim motivations. Recommendation: Option A — add positioning/ to .gitignore, `git rm -r --cached positioning/`, keep locally. Reversible, low effort. Decision pending — user wants to think with fresh head.
+- - P2 Roadmap-Eintrag: Cross-Tab Memory Bridge in Claude Desktop App. Memory ist heute in 3 isolierten Welten: Chat (Cloud), Cowork (Project), Code (Auto-Memory + CLAUDE.md). Pebble könnte als MCP-basierte Bridge fungieren — eine .pebble/ DB die in allen Tabs erreichbar ist. Aktuell blockiert durch Windows-Bug #42453 (lokale stdio MCP tools "disabled" in Cowork/Code, nur Chat zuverlässig). 
+... [truncated]
+```
+</details>
+
+# ─── Pebble: 29 memories | 18 unprocessed commits ───

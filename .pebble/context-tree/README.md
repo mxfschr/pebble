@@ -22,12 +22,12 @@
 - GitHub repo went live 2026-05-20 at https://github.com/mxfschr/pebble (public, MIT). Description: "Git-native AI memory for Claude Code. Open source, local-first, zero LLM API calls." 12 topics set. Auto-sync enabled on Pebble's own repo (dogfooding). Two machines in active use: Max's desktop and laptop. Laptop sync-test token leaked through conversation channel (was meant to be blind) — UX lesson: test tokens must travel only via Pebble itself, never through chat to Max.
 - _...and 2 more_
 
-## 💡 [Learnings](./learnings/README.md) (5)
+## 💡 [Learnings](./learnings/README.md) (6)
 
+- Bug v0.5.1: pebble init regenerated memory.md from empty local DB on fresh machine after git pull, overwriting synced content. Fix: init only generates memory.md if file doesn't exist. memory.md is updated by pebble_remember, not init. Pattern: local-empty state must not clobber synced content (2nd cross-machine bug after v0.3.0 race).
 - Race condition in tryAutoSync E2E test: `git commit --only file` reads file at commit-time from disk, not staging. If a concurrent writer (e.g. old MCP server still in memory) overwrites memory.md between stage and commit, the commit captures wrong state. Commit d37009c truncated memory.md 162→5 lines this way; fix e06ee9f regenerated. Practical rule: only the MCP server writes memory.md.
 - Market reality (May 2026): claude-mem dominates (77k stars, Marketplace, npx-install). Anthropic ships Auto Memory + API Memory Tool + Managed Agents + Claude Dreaming. AGENTS.md in 60k+ projects. Cursor REMOVED Memories (anti-validation). HN skeptics: "CLAUDE.md gives 90%". Pain is real but power-user-only, not mass-market. Pebble's addressable: multi-machine power-users, not all Claude Code users.
-- Anthropic's Auto Memory (v2.1.59, Feb 2026) shipped with a 200-line auto-load cap that silently truncates newest entries — documented in [Issue #25006](https://github.com/anthropics/claude-code/issues/25006). This is the strongest single wedge Pebble has against the default Claude Code experience: Pebble recalls on demand via MCP tools, not pre-loaded into every session, so context-window stays cheap.
-- _...and 2 more_
+- _...and 3 more_
 
 ## 🎯 [Active Work](./active-work/README.md) (8)
 
