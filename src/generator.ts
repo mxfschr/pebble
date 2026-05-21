@@ -242,6 +242,7 @@ Pebble manages two layers of memory: **project memory** (per-repo) and **user me
 - **Session start**: If \`~/.pebble/user/\` exists, read \`voice.md\` (how to communicate with this user) and \`about.md\` (who they are). Apply what you read to your tone and assumptions.
 - **During work**: Call \`pebble_user_note\` when you observe something durable about the user — communication style, preferences, cross-project context, life situation that affects work. Do not log session-specific or project-specific things here (those go in project memory).
 - **Need context**: Call \`pebble_user_recall\` to search past observations, or \`pebble_user_read\` to load a specific file.
+- **Consolidation**: Also at session start, call \`pebble_user_status\`. If notes.md has 15+ entries, consolidate before continuing: read notes.md + about.md/voice.md, integrate durable observations into about.md/voice.md via \`pebble_user_write\`, then clear processed entries from notes.md (also via \`pebble_user_write\`). No approval dialog — git is the safety net. Be deliberate but don't be paralyzed. This is how the user-profile grows over time.
 - If \`~/.pebble/user/\` does not exist, do not nag — only suggest \`pebble user init\` if communication style or identity is directly relevant to the current task.
 `;
 

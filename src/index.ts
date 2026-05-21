@@ -28,6 +28,7 @@ import {
   getUserStatus,
   appendUserNote,
   readUserFile,
+  DEFAULT_CONSOLIDATE_THRESHOLD,
 } from "./user.js";
 import {
   type MemoryCategory,
@@ -37,7 +38,7 @@ import {
   PEBBLE_CONFIG,
 } from "./types.js";
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const SOUL_TEMPLATE = `# soul.md
 # Define how Claude Code should feel when working with you.
@@ -476,7 +477,12 @@ program
         console.log(chalk.bold(`\n  User memory at ${status.root}\n`));
         console.log(`  voice.md:  ${status.files.voice.exists ? `${status.files.voice.lines} lines, ${status.files.voice.bytes} bytes` : chalk.red("missing")}`);
         console.log(`  about.md:  ${status.files.about.exists ? `${status.files.about.lines} lines, ${status.files.about.bytes} bytes` : chalk.red("missing")}`);
-        console.log(`  notes.md:  ${status.files.notes.exists ? `${status.files.notes.entries} entries, ${status.files.notes.bytes} bytes` : chalk.red("missing")}\n`);
+        const entries = status.files.notes.entries;
+        const needsConsolidate = entries >= DEFAULT_CONSOLIDATE_THRESHOLD;
+        const notesLine = status.files.notes.exists
+          ? `${entries} entries, ${status.files.notes.bytes} bytes${needsConsolidate ? chalk.yellow(`  ⚠ consolidation suggested (threshold: ${DEFAULT_CONSOLIDATE_THRESHOLD})`) : ""}`
+          : chalk.red("missing");
+        console.log(`  notes.md:  ${notesLine}\n`);
       })
   )
   .addCommand(

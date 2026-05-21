@@ -264,3 +264,46 @@ export function readUserFile(which: "voice" | "about" | "notes", homeDir?: strin
   if (!fs.existsSync(filePath)) return null;
   return fs.readFileSync(filePath, "utf-8");
 }
+
+// ---------------------------------------------------------------------------
+// Write a user file — used by consolidation. Caller is responsible for
+// preserving content they want to keep (this is a full overwrite).
+// ---------------------------------------------------------------------------
+
+export interface WriteResult {
+  filePath: string;
+  bytesWritten: number;
+}
+
+export function writeUserFile(
+  which: "voice" | "about" | "notes",
+  content: string,
+  homeDir?: string
+): WriteResult {
+  const paths = getUserPaths(homeDir);
+  const filePath = paths[which];
+
+  if (!fs.existsSync(paths.root)) {
+    fs.mkdirSync(paths.root, { recursive: true });
+  }
+
+  // Ensure trailing newline for clean diffs
+  const normalized = content.endsWith("\n") ? content : content + "\n";
+  fs.writeFileSync(filePath, normalized, "utf-8");
+
+  return { filePath, bytesWritten: Buffer.byteLength(normalized, "utf-8") };
+}
+
+// ---------------------------------------------------------------------------
+// Consolidation tracking — count notes entries to know when to consolidate
+// ---------------------------------------------------------------------------
+
+export function getNotesEntryCount(homeDir?: string): number {
+  const paths = getUserPaths(homeDir);
+  if (!fs.existsSync(paths.notes)) return 0;
+  const content = fs.readFileSync(paths.notes, "utf-8");
+  return content.split("\n").filter((l) => l.startsWith("- ")).length;
+}
+
+// Default threshold above which the MANDATORY block instructs consolidation
+export const DEFAULT_CONSOLIDATE_THRESHOLD = 15;

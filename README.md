@@ -163,8 +163,9 @@ Every project-memory call takes a `project_path` parameter — one global MCP se
 |---|---|
 | `pebble_user_note` | Record a durable observation about the user |
 | `pebble_user_recall` | Search across voice.md, about.md, notes.md |
-| `pebble_user_status` | Show whether user memory exists |
+| `pebble_user_status` | Show file sizes + consolidation hint |
 | `pebble_user_read` | Read one of the three user memory files |
+| `pebble_user_write` | Overwrite voice / about / notes (used for consolidation) |
 
 User memory has no `project_path` — it spans every project.
 
@@ -190,6 +191,14 @@ This creates `~/.pebble/user/` with three files:
 `notes.md` grows over time as Claude calls `pebble_user_note` when it learns something durable about you (e.g. "user prefers async over sync", "user switched primary editor from X to Y"). You can edit or trim it any time.
 
 At session start, Claude reads `voice.md` and `about.md` and applies them to tone and assumptions. The MANDATORY block in `~/.claude/CLAUDE.md` (auto-injected on `pebble init`) instructs it to do so.
+
+### Auto-consolidation (the profile grows with you)
+
+Static `voice.md` and `about.md` would go stale. The fix: at session start Claude checks `pebble_user_status`. If `notes.md` has accumulated 15+ entries (configurable), Claude consolidates — reads the notes, decides which observations have become durable patterns vs. one-off events, and rewrites `about.md` and/or `voice.md` to integrate the durable ones. Then it clears or archives the processed notes via `pebble_user_write`.
+
+**No approval dialog.** This is the same pattern Anthropic uses for `claude.ai` memory (silent background synthesis) — except in Pebble it happens at session-boundaries, locally, and **git is the safety net**. If Claude consolidates wrong, you `git diff` and revert in two seconds. Approval dialogs sound safer but in practice get muted within a week; the diff-then-revert workflow is honest, fast, and aligns with how developers already review changes.
+
+If your `~/.pebble/user/` lives inside a git repo (e.g. your dotfiles), every consolidation produces a normal commit you can review, edit, or roll back like any code change.
 
 ### Why this is separate from `~/.claude/CLAUDE.md`
 

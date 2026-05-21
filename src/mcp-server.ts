@@ -34,6 +34,9 @@ import {
   recallUserMemory,
   getUserStatus,
   readUserFile,
+  writeUserFile,
+  getNotesEntryCount,
+  DEFAULT_CONSOLIDATE_THRESHOLD,
 } from "./user.js";
 import {
   type MemoryCategory,
@@ -532,16 +535,21 @@ server.registerTool(
       };
     }
 
+    const entries = status.files.notes.entries;
+    const consolidateHint = entries >= DEFAULT_CONSOLIDATE_THRESHOLD
+      ? `\n\n⚠ notes.md has ${entries} entries (threshold: ${DEFAULT_CONSOLIDATE_THRESHOLD}). Consolidation recommended: read notes, integrate durable observations into about.md/voice.md via pebble_user_write, then clear or archive processed notes.`
+      : "";
+
     const lines = [
       `User memory: ${status.root}`,
       "─".repeat(40),
       `voice.md:  ${status.files.voice.exists ? `${status.files.voice.lines} lines, ${status.files.voice.bytes} bytes` : "missing"}`,
       `about.md:  ${status.files.about.exists ? `${status.files.about.lines} lines, ${status.files.about.bytes} bytes` : "missing"}`,
-      `notes.md:  ${status.files.notes.exists ? `${status.files.notes.entries} entries, ${status.files.notes.bytes} bytes` : "missing"}`,
+      `notes.md:  ${status.files.notes.exists ? `${entries} entries, ${status.files.notes.bytes} bytes` : "missing"}`,
     ];
 
     return {
-      content: [{ type: "text", text: lines.join("\n") }],
+      content: [{ type: "text", text: lines.join("\n") + consolidateHint }],
     };
   }
 );
@@ -579,6 +587,54 @@ server.registerTool(
     }
     return {
       content: [{ type: "text", text: content }],
+    };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Tool: pebble_user_write
+// Overwrite voice.md, about.md, or notes.md. Used for consolidation:
+// you read notes.md + about.md, decide what's durable, and write a
+// refreshed about.md. Then clear or archive the processed notes.
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "pebble_user_write",
+  {
+    title: "Write a User Memory File",
+    description: `Overwrite voice.md, about.md, or notes.md with new content. Use this for consolidation: read notes.md (durable observations Claude has accumulated), integrate the stable ones into about.md or voice.md, then rewrite notes.md to clear the processed entries.
+
+This is a FULL OVERWRITE, not an append. You are responsible for preserving any content you want to keep.
+
+Typical consolidation flow at session start when notes.md is large:
+1. pebble_user_read("notes") — get current observations
+2. pebble_user_read("about") — get current durable profile
+3. Decide which observations have become durable patterns vs. one-offs
+4. pebble_user_write("about", <updated profile>) — promote durable ones
+5. pebble_user_write("notes", <header only or short tail>) — clear processed
+
+No approval dialog. Git is the safety net — auto-sync (if enabled on a project that contains the user-dir) will commit the changes, and the user can git diff / revert if you got it wrong. Be deliberate but don't be paralyzed.`,
+    inputSchema: {
+      which: z.enum(["voice", "about", "notes"])
+        .describe("Which file to overwrite: voice, about, or notes."),
+      content: z.string()
+        .min(1, "Content cannot be empty")
+        .describe("Full new content of the file. Markdown."),
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  async ({ which, content }) => {
+    const result = writeUserFile(which, content);
+    return {
+      content: [{
+        type: "text",
+        text: `Wrote ${result.bytesWritten} bytes to ${result.filePath}.\n(Full overwrite — review with \`git diff\` if the user-dir is git-tracked.)`,
+      }],
     };
   }
 );
