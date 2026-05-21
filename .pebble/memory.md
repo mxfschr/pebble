@@ -29,6 +29,7 @@
 - Anthropic's Auto Memory (v2.1.59, Feb 2026) shipped with a 200-line auto-load cap that silently truncates newest entries — documented in [Issue #25006](https://github.com/anthropics/claude-code/issues/25006). This is the strongest single wedge Pebble has against the default Claude Code experience: Pebble recalls on demand via MCP tools, not pre-loaded into every session, so context-window stays cheap.
 - v0.1.0 root cause for "Claude Code doesn't use pebble tools": soft instructions ("should") + only in .pebble/memory.md which isn't auto-loaded by Claude Code like CLAUDE.md is. Fix in v0.2.0: inject MANDATORY block into global ~/.claude/CLAUDE.md (loaded every session) with strong language ("MUST", "failure mode if you don't"). Verified working — the block is now active in Max's global CLAUDE.md.
 ## 🎯 Active Work
+- Open question: should positioning/ directory stay in public GitHub repo? Pro: transparency, contributor-onboarding, dogfooding. Contra: competitive intel leak (vs claude-mem analysis, roadmap gaps), market-narrowing in public, U1 contains user's verbatim motivations. Recommendation: Option A — add positioning/ to .gitignore, `git rm -r --cached positioning/`, keep locally. Reversible, low effort. Decision pending — user wants to think with fresh head.
 - P2 Roadmap-Eintrag: Cross-Tab Memory Bridge in Claude Desktop App. Memory ist heute in 3 isolierten Welten: Chat (Cloud), Cowork (Project), Code (Auto-Memory + CLAUDE.md). Pebble könnte als MCP-basierte Bridge fungieren — eine .pebble/ DB die in allen Tabs erreichbar ist. Aktuell blockiert durch Windows-Bug #42453 (lokale stdio MCP tools "disabled" in Cowork/Code, nur Chat zuverlässig). Wenn Anthropic den Bug fixt, ist das Pebble's interessanteste neue Opportunity.
 - Open P0 items unchanged since v0.2.1: (1) npm publish pebble-memory (still claims to be installable via npm in README, isn't), (2) Plugin Marketplace PR to anthropics/claude-plugins-official, (3) FTS5 in pebble_recall, (4) AGENTS.md export. New P0 from v0.3.0 session: verify auto-sync works in a real day-of-use workflow (not just E2E test) before recommending it broadly. New P1: improve test workflow — strictly blind tokens, never paste into chat with Max.
 - Pre-launch P0 distribution checklist (positioning/12-marketing-outputs.md §7): (1) npm publish pebble-memory, (2) GitHub repo description + topics via `gh repo edit`, (3) Plugin Marketplace PR to anthropics/claude-plugins-official, (4) Show HN, (5) r/ClaudeAI post, (6) Dev.to article. Steps 4-6 only AFTER 1-3.
@@ -39,35 +40,13 @@
 
 Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.
 
-**5 older commits** (review commit messages, mark processed if not relevant):
+**6 older commits** (review commit messages, mark processed if not relevant):
 - 7b103ba: v0.2.1: Positioning lock — git-native AI memory for Claude Code
 - 61ae584: v0.2.2: Context-window efficiency — ~345 tokens saved per session
 - ba25e2d: test: sync verification token added to memory.md
 - 8a28563: v0.3.0: Auto-sync — pebble watch enable
 - d37009c: pebble: auto-sync — test: auto-sync E2E verification
-
-### e06ee9f: fix: regenerate memory.md after auto-sync test race
-```
-.pebble/memory.md | 3 +--
- 1 file changed, 1 insertion(+), 2 deletions(-)
-```
-<details><summary>Diff</summary>
-
-```diff
-diff --git a/.pebble/memory.md b/.pebble/memory.md
-index a9b5bb8..e39da08 100644
---- a/.pebble/memory.md
-+++ b/.pebble/memory.md
-@@ -28,5 +28,4 @@
- - **61ae584**: v0.2.2: Context-window efficiency — ~345 tokens saved per session
- - **ba25e2d**: test: sync verification token added to memory.md
- - **8a28563**: v0.3.0: Auto-sync — pebble watch enable
--
--<!-- auto-sync test marker -->
-+- **d37009c**: pebble: auto-sync — test: auto-sync E2E verification
-
-```
-</details>
+- e06ee9f: fix: regenerate memory.md after auto-sync test race
 
 ### 8260069: memory: session-end snapshot (v0.3.0 launch, race-learning, repo-live, todos)
 ```
@@ -262,4 +241,57 @@ index 93d6b4b..5f1a3f8 100644
 ```
 </details>
 
-# ─── Pebble: 25 memories | 10 unprocessed commits ───
+### dcaac96: v0.4.0: User memory — voice.md, about.md, notes.md in ~/.pebble/user/
+```
+.pebble/memory.md |  97 ++++++++++++--------
+ README.md         |  67 +++++++++++++-
+ package.json      |   2 +-
+ src/generator.ts  |  10 +-
+ src/index.ts      |  80 +++++++++++++++-
+ src/mcp-server.ts | 180 ++++++++++++++++++++++++++++++++++++
+ src/user.ts       | 266 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 7 files changed, 657 insertions(+), 45 deletions(-)
+```
+<details><summary>Diff</summary>
+
+```diff
+diff --git a/.pebble/memory.md b/.pebble/memory.md
+index 5f1a3f8..6111d7a 100644
+--- a/.pebble/memory.md
++++ b/.pebble/memory.md
+@@ -39,49 +39,12 @@
+ 
+ Review these commits. Call `pebble_remember` for insights, then `pebble_mark_processed`.
+ 
+-**4 older commits** (review commit messages, mark processed if not relevant):
++**5 older commits** (review commit messages, mark processed if not relevant):
+ - 7b103ba: v0.2.1: Positioning lock — git-native AI memory for Claude Code
+ - 61ae584: v0.2.2: Context-window efficiency — ~345 tokens saved per session
+ - ba25e2d: test: sync verification token added to memory.md
+ - 8a28563: v0.3.0: Auto-sync — pebble watch enable
+-
+-### d37009c: pebble: auto-sync — test: auto-sync E2E verification
+-```
+-.pebble/memory.md | 162 ++----------------------------------------------------
+- 1 file changed, 5 insertions(+), 157 deletions(-)
+-```
+-<details><summary>Diff</summary>
+-
+-```diff
+-diff --git a/.pebble/memory.md b/.pebble/memory.md
+-index 6cec6d9..a9b5bb8 100644
+---- a/.pebble/memory.md
+-+++ b/.pebble/memory.md
+-@@ -22,163 +22,11 @@
+- - Market reality (May 2026): claude-mem dominates (77k stars, Marketplace, npx-install). Anthropic ships Auto Memory + API Memory Tool + Managed Agents + Claude Dreaming. AGENTS.md in 60k+ projects. Cursor REMOVED Memories (anti-validation). HN skeptics: "CLAUDE.md gives 90%". Pain is real but power-user-only, not mass-market. Pebble's addressable: multi-machine power-users, not all Claude Code users.
+- - Anthropic's Auto Memory (v2.1.59, Feb 2026) shipped with a 200-line auto-load cap that silently truncates newest entries — documented in [Issue #25006](https://github.com/anthropics/claude-code/issues/25006). This is the strongest single wedge Pebble has against the default Claude Code experience: Pebble recalls on demand via MCP tools, not pre-loaded into every session, so context-window stays cheap.
+- - v0.1.0 root cause for "Claude Code doesn't use pebble tools": soft instructions ("should") + only in .pebble/memory.md which isn't auto-loaded by Claude Code like CLAUDE.md is. Fix in v0.2.0: inject MANDATORY block into global ~/.claude/CLAUDE.md (loaded every session) with strong language ("MUST", "failure mode if you don't"). Verified working — the block is now active in Max's global CLAUDE.md.
+--## 🎯 Active Work
+--- Pre-launch P0 distribution checklist (positioning/12-marketing-outputs.md §7): (1) npm publish pebble-memory, (2) GitHub repo description + topics via `gh repo edit`, (3) Plugin Marketplace PR to anthropics/claude-plugins-official, (4) Show HN, (5) r/ClaudeAI post, (6) Dev.to article. Steps 4-6 only AFTER 1-3.
+--- README quickstart says `npm install -g pebble-memory` but package isn't on npm yet. Either publish to npm or rewrite quickstart to git-clone instructions. Blocker for any non-Max install.
+--- v0.2.1: drop duplicated MANDATORY block from .pebble/memory.md — global CLAUDE.md already has it (token waste). Add CLI `pebble status` (currently MCP-only). Add PEBBLE_
+... [truncated]
+```
+</details>
+
+# ─── Pebble: 26 memories | 11 unprocessed commits ───
