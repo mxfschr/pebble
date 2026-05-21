@@ -274,13 +274,12 @@ What auto-sync does NOT do:
 your-project/
 ├── CLAUDE.md                     ← yours; Pebble adds one pointer line on init, never touched after
 ├── .gitignore                    ← Pebble appends the right ignore patterns
-├── soul.md                       ← optional; created by init if it doesn't exist
 └── .pebble/
-    ├── memory.md                 ← AUTO — committable, Claude reads this
-    ├── memory.db                 ← per-machine cache, gitignored
+    ├── memory.md                 ← AUTO — committable, Claude reads this on session start
+    ├── memory.db                 ← per-machine SQLite cache, gitignored
     ├── config.json               ← per-machine, gitignored
-    └── context-tree/
-        ├── README.md             ← AUTO — committable
+    └── context-tree/             ← AUTO — committable, one markdown per category
+        ├── README.md
         ├── decisions/README.md
         ├── patterns/README.md
         ├── context/README.md
@@ -289,8 +288,13 @@ your-project/
 ```
 
 ```
-~/.claude/CLAUDE.md               ← Pebble injects a mandatory-usage block here on init,
+~/.claude/CLAUDE.md               ← Pebble injects a MANDATORY-usage block here on init,
                                     so Claude Code uses Pebble's tools in every session
+
+~/.pebble/user/                   ← global, machine-local (NOT in any repo)
+├── voice.md                      ← how Claude should communicate with you (you edit)
+├── about.md                      ← who you are, cross-project context (you edit)
+└── notes.md                      ← observations Claude appends; auto-consolidated into voice/about over time
 ```
 
 ## Requirements
@@ -305,21 +309,22 @@ your-project/
 
 ## Roadmap
 
-P0 (before 1.0):
-- Publish to npm so `npm install -g pebble-memory` actually works
-- Submit to the official [Claude Code Plugin Marketplace](https://github.com/anthropics/claude-plugins-official)
-- FTS5 search in `pebble_recall` (today: pattern match)
-- AGENTS.md export — generate `.pebble/AGENTS.md` snapshot for cross-tool compatibility
+**P0 — before 1.0:**
+- DB auto-import from `memory.md` on a fresh machine — currently after `git pull` the markdown has content but the local DB is empty, so `pebble_recall` finds nothing until you start writing new memories. Auto-import will parse `memory.md` and populate the DB on first tool call.
+- Publish to npm so `npm install -g pebble-memory` actually works.
+- Submit to the official [Claude Code Plugin Marketplace](https://github.com/anthropics/claude-plugins-official).
+- FTS5 search in `pebble_recall` (today: substring match).
 
-P1:
-- Optional MCP-tool gating — let users disable auto-init for unfamiliar paths
-- Honest benchmark vs. claude-mem for token usage on identical workloads
-- Drop the duplicated MANDATORY block from `.pebble/memory.md` once global injection is enough
+**P1:**
+- AGENTS.md export — generate `.pebble/AGENTS.md` snapshot for cross-tool compatibility (Cursor, Codex, Aider, Copilot).
+- Cross-tab bridge for Claude Desktop App (Chat / Cowork / Code) once Windows MCP [bug #42453](https://github.com/anthropics/claude-code/issues/42453) is fixed upstream.
+- Optional `~/.pebble/user/` sync via a separate dotfiles repo.
+- Honest benchmark vs. claude-mem for token usage on identical workloads.
 
-P2:
-- `pebble blame <decision>` — show the commit diff that triggered the memory
-- Multi-project global memories (`~/.pebble/global/`)
-- Cursor + other MCP-client first-class support
+**P2:**
+- `pebble blame <decision>` — show the commit diff that triggered a given memory.
+- `~/.pebble/global/` — third memory layer for cross-project but non-personal context.
+- Cursor + other MCP-client first-class support.
 
 ## Architecture
 

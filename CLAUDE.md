@@ -1,105 +1,119 @@
 # CLAUDE.md — Pebble
 
+> Project-level instructions for working on the Pebble codebase itself.
+> If you're a user of Pebble (not a contributor), see README.md.
+
 ## What Pebble Is
 
-Open-source persistent memory for AI coding assistants (starting with Claude Code). Auto-captures git commits, queues them, lets Claude Code process them into structured memories via MCP tools. Zero API keys, zero cost, local-first.
+Open-source persistent memory for AI coding assistants (Claude Code first). Two layers:
+- **Project memory** (per-repo, in `.pebble/`): captures decisions, patterns, learnings, context, todos.
+- **User memory** (global, in `~/.pebble/user/`): captures who the user is + how Claude should communicate with them.
 
-**Tagline:** Small stones, big picture.
+Both are plain markdown + SQLite. Zero LLM API calls for capture — Claude (already running in the user's session) is the intelligence layer; Pebble is the bookkeeping. Local-first, no cloud, no auth.
 
-## Critical Architecture Rule
+**Tagline:** Git-native AI memory for Claude Code.
 
-**Pebble NEVER overwrites CLAUDE.md.** The user's CLAUDE.md is sacred — it contains their rules, workflow, identity. Pebble only:
-1. Adds a one-line pointer on first `init` (non-destructive, one time)
-2. Writes to `.pebble/memory.md` (auto-generated memories)
-3. Writes to `.pebble/context-tree/` (detailed markdown files)
-4. Creates `soul.md` template on init (only if it doesn't exist)
+## Critical Architecture Rules
 
-**The 3-file system:**
-- `CLAUDE.md` — User's rules, identity, workflow (MANUAL, Pebble never touches after init)
-- `soul.md` — Claude's personality/voice for this user (MANUAL, user customizes)
-- `.pebble/memory.md` — Accumulated knowledge from commits + MCP (AUTO-GENERATED)
+1. **Pebble NEVER overwrites the user's CLAUDE.md content.** It only injects a one-line pointer into the project CLAUDE.md on init, and a MANDATORY-block into the global `~/.claude/CLAUDE.md`. Existing content is preserved.
+
+2. **`pebble init` is idempotent and non-destructive.** Specifically, init must NEVER overwrite an existing `.pebble/memory.md` — that file might have been pulled from another machine via git and overwriting it from a local-empty DB destroys synced content. (See v0.5.1 fix in `src/index.ts`.)
+
+3. **Templates are GENERIC.** No hardcoded user names, projects, locations, or personal examples anywhere in `src/`, README, or default configs. `voice.md` and `about.md` templates use `[placeholders]` only. Each user fills them in themselves. The maintainer's personal content lives only in their local `~/.pebble/user/`, never in the repo.
+
+4. **Memory files are the cross-machine source of truth.** `.pebble/memory.md` and `.pebble/context-tree/` are designed to be git-tracked by downstream users. The SQLite DB (`memory.db`) is per-machine and gitignored. Knowledge syncs via markdown; recall infrastructure rebuilds per machine.
 
 ## Architecture
 
-**Zero LLM calls.** Git hook queues raw commit data into SQLite. Claude Code reads `.pebble/memory.md` (which includes unprocessed commits), decides what's worth remembering, calls MCP tools.
-
-**The flow:**
 ```
 commit → post-commit hook → `pebble capture` → queues diff in SQLite
-→ regenerates .pebble/memory.md + context tree
-→ next Claude Code session reads it
-→ Claude calls `pebble_remember` + `pebble_mark_processed`
+                                              → regenerates .pebble/memory.md
+                                              → regenerates .pebble/context-tree/
+                                              → (if auto_sync) git add + commit + push
+→ next Claude Code session reads memory.md per MANDATORY block
+→ Claude calls pebble_remember / pebble_user_note / etc. via MCP
 ```
 
-## File Structure
+No LLM calls in the capture path. The git hook does `execSync('git ...')` + a SQLite insert. That's it.
+
+## Source Files
 
 ```
 src/
-├── index.ts          — CLI (commander, 8 commands, soul.md template)
-├── mcp-server.ts     — MCP server (6 tools)
-├── db.ts             — SQLite layer (better-sqlite3, WAL)
-├── extractor.ts      — Commit queue (captures diffs, NO LLM)
-├── generator.ts      — Generates .pebble/memory.md, triggers context tree, CLAUDE.md pointer
+├── index.ts          — CLI (commander, project + user subcommands, version, init/capture/add/search/forget/status/generate/hooks/watch/user)
+├── mcp-server.ts     — MCP server (9 tools: 5 project + 4 user)
+├── db.ts             — SQLite layer (better-sqlite3, WAL), per-project connection cache
+├── extractor.ts      — Commit queue (captures diffs via execSync git, NO LLM)
+├── generator.ts      — Generates .pebble/memory.md, ensureClaudeMdPointer (project),
+│                       ensureGlobalClaudeMdPebble (global)
 ├── context-tree.ts   — Writes memories as markdown in .pebble/context-tree/
 ├── hooks.ts          — Git post-commit hook installer
-└── types.ts          — Types, 5 categories, config defaults
+├── sync.ts           — Opt-in auto-sync via git (commit + push on remember, pull on session start)
+├── user.ts           — User memory: voice/about/notes management + consolidation
+└── types.ts          — Types, 5 memory categories, config defaults including auto_sync flag
 ```
+
+## MCP Tools (9 total)
+
+**Project memory (5):**
+- `pebble_remember` — store memory with category + tags
+- `pebble_recall` — search by keyword (currently substring match; FTS5 on roadmap)
+- `pebble_forget` — remove by ID
+- `pebble_status` — stats + unprocessed commit count
+- `pebble_mark_processed` — clear commits from review queue
+
+**User memory (4):**
+- `pebble_user_note` — append observation to ~/.pebble/user/notes.md
+- `pebble_user_recall` — search across voice/about/notes
+- `pebble_user_status` — show file state + consolidation hint at 15+ notes
+- `pebble_user_read` — read full content of voice/about/notes
+- `pebble_user_write` — overwrite voice/about/notes (used for auto-consolidation)
+
+All project-memory tools take a `project_path` parameter (absolute path to the project root). User-memory tools take no path — they always read `~/.pebble/user/`.
 
 ## Tech Stack
 
-TypeScript, Node.js (ESM), SQLite (better-sqlite3), MCP SDK, Commander, Zod, Chalk. No external API deps.
-
-## Key Decisions
-
-- Pebble NEVER touches CLAUDE.md content (only adds pointer once)
-- soul.md is a template users customize (personality, voice, mindset)
-- .pebble/memory.md is the only auto-generated file Claude reads
-- .pebble/context-tree/ has detailed per-category markdown files
-- .gitignore: DB + config are private, context-tree can be shared
-- Git hook calls `pebble capture` (not `extract`) — no LLM, just queue
-- "Before ending a long session" instruction in memory.md for memory flush
+TypeScript, Node.js (ESM), SQLite (better-sqlite3), MCP SDK, Commander, Zod, Chalk. No external API deps. No HTTP server. No telemetry.
 
 ## Conventions
 
-- MCP tools prefixed with `pebble_`
-- Memory sources: "mcp", "manual"
-- Config: `.pebble/config.json`, DB: `.pebble/memory.md`, tree: `.pebble/context-tree/`
+- MCP tools prefixed with `pebble_` (project) or `pebble_user_` (user)
+- Memory sources: `"mcp"`, `"manual"` (currently — could grow with imports)
+- 5 memory categories (enforced via type union): `decision`, `pattern`, `context`, `learning`, `todo`
+- `.pebble/config.json` per project (gitignored), `auto_sync: false` by default
+- All writes that could clobber synced state (init, generate) must be conditional on local-empty vs. synced-content
 
----
+## Key Decisions
 
-## TODO for Claude Code
+- **Pebble's own `.pebble/memory.md` and `context-tree/` are gitignored in THIS repo.** Downstream users typically track theirs (that's the value). But the Pebble tool itself shouldn't ship its development memory to people cloning it. See `.gitignore`.
+- **soul.md was removed in v0.4.0.** Replaced by the `~/.pebble/user/` layer (voice.md + about.md + notes.md), which is a cleaner separation of concerns and grows dynamically via consolidation. Legacy soul.md is no longer created by init.
+- **No background daemon.** Auto-sync hooks into MCP tool calls. Auto-consolidation hooks into session-start via the MANDATORY block. Both rely on Claude actually being in a session — no separate process.
+- **Git is the approval layer for auto-consolidation.** No dialog. If Claude consolidates wrong, `git diff` and revert. Approval dialogs get muted within a week; diff-then-revert is honest and fast.
 
-### P0 — Before Dogfooding
+## Open Roadmap
 
-1. **Test MCP server end-to-end with Claude Code** — configure as MCP server, verify all 6 tools, test full commit→capture→remember→mark_processed flow
-2. **Test soul.md actually works** — verify Claude Code reads soul.md and adjusts behavior. If it doesn't read it automatically, add pointer to CLAUDE.md
-3. **Test with Max's real CLAUDE.md** — run `pebble init` in a project that has Max's existing 260-line CLAUDE.md, verify pointer is added correctly without breaking anything
-4. **Handle the `session-log.md` migration** — Max currently manually maintains `~/.claude/session-log.md`. Pebble should eventually replace this. For now, add a note about coexistence.
-5. **Windows compatibility** — git hooks use `#!/bin/sh`, better-sqlite3 needs compile, path separators
+**P0 — before npm publish + Plugin Marketplace submission:**
+- DB auto-import from memory.md when DB is empty but markdown has content (the cross-machine UX gap discovered while dogfooding v0.5.1).
+- npm publish so `npm install -g pebble-memory` works.
+- Plugin Marketplace PR to `anthropics/claude-plugins-official`.
+- FTS5 in `pebble_recall` for real search.
 
-### P1 — Before GitHub Launch
+**P1:**
+- AGENTS.md export — generate cross-tool-readable `.pebble/AGENTS.md` snapshot.
+- Cross-tab Pebble bridge (Chat / Cowork / Code) once Windows MCP bug #42453 is fixed upstream.
+- Optional `~/.pebble/user/` git-sync via separate dotfiles repo.
 
-6. **`npx pebble-memory init` zero-install** — publish to npm
-7. **README polish** — demo GIF, architecture diagram, ByteRover comparison, badges
-8. **Supersession in MCP** — optional `supersedes_id` param on `pebble_remember`
-9. **Better search** — FTS5 (SQLite full-text search) in `pebble_recall`
-10. **`pebble watch` daemon** — alternative to git hooks
-11. **Config validation with Zod**
-12. **soul.md templates** — multiple starting templates (solo dev, team lead, agency dev)
+**P2:**
+- `pebble blame <decision>` — show the commit diff that triggered the memory.
+- `~/.pebble/global/` — third memory layer for cross-project but non-personal context.
+- Cursor + other MCP-client first-class support.
 
-### P2 — v0.2
+## What's Already Done (for context)
 
-13. Multi-project global memories (`~/.pebble/global/`)
-14. Memory export/import (JSON)
-15. Cursor support (`.cursorrules` generation)
-16. Web dashboard (localhost)
-17. Semantic search (local embeddings, `@xenova/transformers`)
-18. GitHub Action for CI memory
-19. Stats + analytics (`pebble stats --detailed`)
-
-### Quality
-
-20. Error handling (no stack traces in CLI)
-21. Tests (vitest — db, context-tree, generator)
-22. CI pipeline (GitHub Actions, npm auto-publish)
-23. CONTRIBUTING.md
+v0.2.0 — multi-project MCP, auto-init, global MANDATORY-block injection.
+v0.2.1 — positioning locked, README rewrite.
+v0.2.2 — context-window efficiency fixes (~345 tokens saved per session).
+v0.3.0 — opt-in auto-sync via `pebble watch enable` (commit + push on remember, pull on session start).
+v0.4.0 — user memory layer (`~/.pebble/user/` with voice + about + notes).
+v0.5.0 — auto-consolidation (Claude rewrites about.md from notes.md at session start when notes hit threshold).
+v0.5.1 — bug fix: pebble init no longer overwrites existing memory.md.

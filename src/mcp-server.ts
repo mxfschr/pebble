@@ -29,6 +29,7 @@ import {
 } from "./extractor.js";
 import { installGitHook } from "./hooks.js";
 import { tryAutoSync, tryAutoPull, shouldPullOnceThisSession } from "./sync.js";
+import { maybeImportFromMd, shouldImportOnceThisSession } from "./import.js";
 import {
   appendUserNote,
   recallUserMemory,
@@ -128,6 +129,28 @@ function getProjectContext(projectPath?: string): ProjectContext {
   const projectName = path.basename(normalized);
   const project = ensureProject(db, normalized, projectName);
   decayRelevance(db, project.id, config.relevance_decay_days);
+
+  // DB auto-import: on a fresh machine after `git pull`, memory.md has
+  // content but the local DB is empty. Without this, pebble_recall returns
+  // nothing until the user manually writes new memories. With this, the
+  // markdown is rehydrated into the DB on first context creation per
+  // project per server run, so recall works immediately.
+  //
+  // Skipped silently if DB already has memories or memory.md doesn't exist.
+  // Only runs once per project per server lifetime (tracked in import.ts).
+  if (shouldImportOnceThisSession(normalized)) {
+    try {
+      const result = maybeImportFromMd(db, project.id, normalized);
+      if (result && result.imported > 0) {
+        process.stderr.write(
+          `[pebble] imported ${result.imported} memories from .pebble/memory.md into local DB\n`
+        );
+      }
+    } catch (err) {
+      // Defensive — import is best-effort, never break a session over it.
+      process.stderr.write(`[pebble] import skipped: ${(err as Error).message}\n`);
+    }
+  }
 
   const ctx: ProjectContext = { db, project, config, projectPath: normalized };
   projectCache.set(normalized, ctx);

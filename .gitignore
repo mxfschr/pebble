@@ -1,19 +1,29 @@
 node_modules/
 dist/
 
-# Pebble: DB + machine-specific config are private,
-# but memory.md and context-tree/ are git-trackable (shareable knowledge).
+# Pebble's own machine-local state (DB, config, hook runner script).
 .pebble/memory.db*
 .pebble/config.json
 .pebble/run.sh
 
+# Pebble's own dogfooded memory. Per-project memory.md and context-tree/
+# CAN be tracked in a downstream user's repo (that's the whole point of
+# git-native memory). But in THIS repo — the Pebble tool itself — we
+# keep our own dogfood memory out so users cloning Pebble start fresh
+# instead of inheriting our development history.
+.pebble/memory.md
+.pebble/context-tree/
+
 # Per-machine MCP config (hardcoded paths)
 .mcp.json
+
+# Local soul.md (legacy file from v0.3.x and earlier; replaced by the
+# user-memory layer in v0.4.0 — ~/.pebble/user/voice.md + about.md).
+# Not tracked in this repo.
+soul.md
 
 *.db
 .claude/settings.local.json
 
-# Positioning work — internal strategy docs (competitive analysis,
-# evidence log, roadmap). Kept private to avoid leaking competitive
-# intel + maintainer voice notes. Lives only on the maintainer's machine.
+# Internal positioning / strategy docs (maintainer-only).
 positioning/

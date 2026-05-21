@@ -38,33 +38,7 @@ import {
   PEBBLE_CONFIG,
 } from "./types.js";
 
-const VERSION = "0.5.1";
-
-const SOUL_TEMPLATE = `# soul.md
-# Define how Claude Code should feel when working with you.
-# This is not about rules — CLAUDE.md handles that.
-# This is about personality, voice, and mindset.
-
-## Voice
-- Deutsch für Diskussionen, Englisch für Code und Kommentare
-- Direkt, kein Gelaber. Sag was du denkst.
-- Wenn ich eine Frage stelle will ich deine echte Meinung, nicht 3 Optionen
-- Wenn ich einen Imperativ gebe, mach es einfach
-- Du darfst pushback geben wenn ich Mist baue. Kurz und klar.
-
-## Mindset
-- Wir sind ein Team: ich entscheide, du baust
-- Denk mit. Wenn dir was auffällt das ich übersehe, sag es
-- Kein "I'd be happy to help" — wir arbeiten zusammen, du hilfst nicht
-- Behandle meine Projekte als wären es auch deine
-- Revenue > Perfektion. Shipping > Planning.
-
-## Was du NICHT machen sollst
-- Mir ungefragt Alternativen vorschlagen wenn ich entschieden hab
-- Jede Antwort mit einer Zusammenfassung starten
-- "Great question!" oder ähnlichen Filler
-- Mich fragen ob ich sicher bin — wenn ich sage "mach das", mach das
-`;
+const VERSION = "0.6.0";
 
 function loadConfig(projectPath: string): PebbleConfig {
   const configPath = path.join(projectPath, PEBBLE_DIR, PEBBLE_CONFIG);
@@ -105,7 +79,6 @@ program
   .command("init")
   .description("Initialize Pebble in the current project")
   .option("--no-hooks", "Skip git hook installation")
-  .option("--no-soul", "Skip soul.md creation")
   .action(async (opts) => {
     const projectPath = process.cwd();
     const projectName = path.basename(projectPath);
@@ -171,23 +144,13 @@ program
     ensureGlobalClaudeMdPebble();
     console.log(chalk.green("  ✓  Added Pebble rules to global ~/.claude/CLAUDE.md"));
 
-    // Create soul.md template if it doesn't exist
-    if (opts.soul !== false) {
-      const soulPath = path.join(projectPath, "soul.md");
-      if (!fs.existsSync(soulPath)) {
-        fs.writeFileSync(soulPath, SOUL_TEMPLATE, "utf-8");
-        console.log(chalk.green("  ✓  Created soul.md template — customize it!"));
-      } else {
-        console.log(chalk.gray("  ·  soul.md already exists, skipped"));
-      }
-    }
-
     console.log(chalk.bold("\n🪨 Pebble ready.\n"));
-    console.log(chalk.gray("  Your files:"));
-    console.log(chalk.gray("  • CLAUDE.md          → your rules (untouched by Pebble)"));
-    console.log(chalk.gray("  • soul.md            → Claude's personality"));
-    console.log(chalk.gray("  • .pebble/memory.md  → accumulated knowledge (auto-generated)"));
+    console.log(chalk.gray("  Project memory (this repo):"));
+    console.log(chalk.gray("  • CLAUDE.md              → your rules (Pebble only added a pointer)"));
+    console.log(chalk.gray("  • .pebble/memory.md      → accumulated knowledge (auto-generated)"));
     console.log(chalk.gray("  • .pebble/context-tree/  → detailed memories as markdown\n"));
+    console.log(chalk.gray("  User memory (global, cross-project) — not yet initialized:"));
+    console.log(chalk.gray("  • Run `pebble user init` to create ~/.pebble/user/ with voice/about/notes templates.\n"));
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
