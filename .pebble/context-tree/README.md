@@ -15,12 +15,12 @@
 - Generic open-source rule for Pebble: No hardcoded user-specific strings in src/, README, templates, or default configs. Templates use [placeholders] or {{variables}}. Examples in docs are abstract ("when the user says X"). Personal content lives only in ~/.pebble/user/ which is machine-local and never committed to the open-source repo.
 - .gitignore strategy for Pebble installations: ignore `.pebble/memory.db*`, `.pebble/config.json`, `.pebble/run.sh`, `.mcp.json`. Track `.pebble/memory.md` and `.pebble/context-tree/`. The auto-init code in mcp-server.ts:getProjectContext appends only memory.db + config.json to .gitignore — leaves the trackable knowledge files alone.
 
-## 📋 [Project Context](./context/README.md) (4)
+## 📋 [Project Context](./context/README.md) (5)
 
+- CROSS-MACHINE-SYNC-TEST 2026-05-21 mittags: blind verification token = "Hodensack". Desktop-Claude speichert dies via pebble_remember, auto-sync (v0.3.0+) pusht zu GitHub. Laptop-Claude pullt beim nächsten Session-Start automatisch und sollte das Token in der project memory.md finden ohne dass es ihm im Chat gesagt wurde. Max chose this word — it's the actual blind test.
 - "Claude Code" hat 2 Surfaces Mai 2026: CLI (claude.exe) UND Code-Tab in Claude Desktop App (GUI, April 2026 redesigned). Beide teilen Engine, ~/.claude/CLAUDE.md, MCP-Config, Auto-Memory in ~/.claude/projects/. Max nutzt Code-Tab als primäre Surface. Pebble's Architektur funktioniert in beiden 1:1.
 - GitHub repo went live 2026-05-20 at https://github.com/mxfschr/pebble (public, MIT). Description: "Git-native AI memory for Claude Code. Open source, local-first, zero LLM API calls." 12 topics set. Auto-sync enabled on Pebble's own repo (dogfooding). Two machines in active use: Max's desktop and laptop. Laptop sync-test token leaked through conversation channel (was meant to be blind) — UX lesson: test tokens must travel only via Pebble itself, never through chat to Max.
-- SYNC-TEST-2026-05-20: Das Test-Token lautet "Schinkenbrot-Magenta-Fahrwasser". Wenn ein anderer Claude-Instance auf einer anderen Maschine dieses Token nennen kann ohne dass es ihm explizit gesagt wurde, dann ist Pebble's git-basierter Memory-Sync verifiziert. Erstellt vom Desktop-Claude am 2026-05-20.
-- _...and 1 more_
+- _...and 2 more_
 
 ## 💡 [Learnings](./learnings/README.md) (5)
 
