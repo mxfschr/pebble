@@ -38,7 +38,7 @@ import {
   PEBBLE_CONFIG,
 } from "./types.js";
 
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 function loadConfig(projectPath: string): PebbleConfig {
   const configPath = path.join(projectPath, PEBBLE_DIR, PEBBLE_CONFIG);
@@ -112,14 +112,30 @@ program
       }
     }
 
-    // Add .pebble to .gitignore (but NOT context-tree)
+    // Ensure .gitignore exists and contains the right Pebble patterns.
+    // We ignore: memory.db (binary, machine-local), config.json (machine-local),
+    // run.sh (hook helper, generated). We do NOT ignore memory.md or
+    // context-tree/ — those ARE the cross-machine sync mechanism.
     const gitignorePath = path.join(projectPath, ".gitignore");
+    const pebbleIgnoreBlock =
+      "# Pebble: DB + machine-specific config + hook runner are private.\n" +
+      "# memory.md and context-tree/ are tracked (that's how cross-machine sync works).\n" +
+      ".pebble/memory.db*\n" +
+      ".pebble/config.json\n" +
+      ".pebble/run.sh\n";
+
     if (fs.existsSync(gitignorePath)) {
       const gitignore = fs.readFileSync(gitignorePath, "utf-8");
-      if (!gitignore.includes(".pebble")) {
-        fs.appendFileSync(gitignorePath, "\n# Pebble memory (DB is private, context-tree can be shared)\n.pebble/memory.db\n.pebble/config.json\n");
-        console.log(chalk.green("  ✓  Added .pebble DB to .gitignore"));
+      if (!gitignore.includes(".pebble/memory.db")) {
+        const sep = gitignore.endsWith("\n") ? "\n" : "\n\n";
+        fs.appendFileSync(gitignorePath, sep + pebbleIgnoreBlock);
+        console.log(chalk.green("  ✓  Added Pebble entries to .gitignore"));
+      } else {
+        console.log(chalk.gray("  ·  .gitignore already has Pebble entries"));
       }
+    } else {
+      fs.writeFileSync(gitignorePath, pebbleIgnoreBlock, "utf-8");
+      console.log(chalk.green("  ✓  Created .gitignore with Pebble entries"));
     }
 
     // Generate .pebble/memory.md — ONLY if it doesn't exist yet.

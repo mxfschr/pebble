@@ -1,6 +1,6 @@
 {
   "name": "pebble-memory",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Git-native AI memory for Claude Code. Per-project knowledge in your repo, per-user voice machine-local. Open source, local-first, zero LLM API calls.",
   "type": "module",
   "bin": {
