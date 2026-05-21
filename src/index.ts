@@ -38,7 +38,7 @@ import {
   PEBBLE_CONFIG,
 } from "./types.js";
 
-const VERSION = "0.5.0";
+const VERSION = "0.5.1";
 
 const SOUL_TEMPLATE = `# soul.md
 # Define how Claude Code should feel when working with you.
@@ -149,9 +149,19 @@ program
       }
     }
 
-    // Generate .pebble/memory.md
-    regenerate(projectPath, config);
-    console.log(chalk.green("  ✓  Generated .pebble/memory.md"));
+    // Generate .pebble/memory.md — ONLY if it doesn't exist yet.
+    // Critical: if the file already exists (e.g. after `git pull` brought
+    // it from another machine where memories were stored), regenerating
+    // from the local empty DB would overwrite the synced content with
+    // an empty file. memory.md is updated by pebble_remember and friends
+    // — not by init.
+    const memoryMdPath = path.join(projectPath, PEBBLE_DIR, "memory.md");
+    if (!fs.existsSync(memoryMdPath)) {
+      regenerate(projectPath, config);
+      console.log(chalk.green("  ✓  Generated .pebble/memory.md"));
+    } else {
+      console.log(chalk.gray("  ·  .pebble/memory.md already exists — left untouched (pebble init does not overwrite)"));
+    }
 
     // Add pointer to project CLAUDE.md (one line, non-destructive)
     ensureClaudeMdPointer(projectPath);
